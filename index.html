@@ -1,0 +1,332 @@
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+        <meta charset="UTF-8" />
+        <style>
+            body {
+                margin: 0;
+                background-color: #000000;
+                color: #ffffff;
+                font-family: sans-serif;
+            }
+            button {
+                font-family: monospace;
+            }
+        </style>
+        <link rel="stylesheet" href="./xterm.css" />
+    </head>
+
+    <body>
+        <div
+            style="
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: start;
+                justify-content: center;
+                overflow: hidden;
+            "
+        >
+            <style>
+                #header,
+                #footer {
+                    box-sizing: border-box;
+                    display: flex;
+                    width: 100%;
+                    padding: 8px;
+                    flex-shrink: 0; /* don't shrink header/footer */
+                    font-size: 0.75rem;
+                }
+                #header.hidden,
+                #footer.hidden,
+                #disassembler_panel.hidden {
+                    visibility: hidden;
+                }
+                .icon {
+                    width: 2em;
+                    height: 2em;
+                    vertical-align: middle;
+                }
+                button.icon {
+                    all: unset;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 2px 2px;
+                    border: none;
+                    cursor: pointer; /* makes it clear it's clickable */
+                }
+            </style>
+            <div id="header">
+                <button id="reset" class="icon" data-text="Сигнал RESET">
+                    <img class="icon" src="i/reset.svg" />
+                </button>
+                <button id="restart" class="icon" data-text="Перезапустить эмулятор">
+                    <img class="icon" src="i/power-off.svg" />
+                </button>
+                <button id="pause" class="icon" data-text="Приостановить процессор">
+                    <img id="pause-icon" data-on="i/paused.svg" data-off="i/pause.svg" class="icon" src="i/pause.svg" />
+                </button>
+                <button id="fullscreen" class="icon" data-text="Полноэкранный режим">
+                    <img class="icon" src="i/fullscreen.svg" />
+                </button>
+                <div style="margin-left: auto; display: flex; align-items: center; gap: 4px">
+                    <button id="tape" class="icon" data-text="Запись на ленту">
+                        <img class="icon" id="tape_activity_indicator" src="" style="visibility: hidden" />
+                    </button>
+                    <button id="disassembler_toggle" class="icon" data-text="Дизассемблер">
+                        <img class="icon" id="disassembler_icon" src="i/disassembler-off.svg" />
+                    </button>
+                    <button id="screenshot" class="icon" data-text="Снимок экрана">
+                        <img class="icon" src="i/screenshot.svg" />
+                    </button>
+                    <button id="memory" class="icon" data-text="Сохранить память в файл">
+                        <img class="icon" src="i/memory.svg" />
+                    </button>
+                    <button id="snapshot" class="icon" data-text="Сохранить полное состояния">
+                        <img class="icon" src="i/snapshot.svg" />
+                    </button>
+                    <select id="file_selector"></select>
+                    <button id="run" class="icon">
+                        <img class="icon" src="i/run.svg" />
+                    </button>
+                    <button id="load" class="icon">
+                        <img class="icon" src="i/load.svg" />
+                    </button>
+                    <button id="sound" class="icon">
+                        <img
+                            id="sound-icon-toggle"
+                            data-muted="i/sound-muted.svg"
+                            data-on="i/sound.svg"
+                            class="icon"
+                            src="i/sound-muted.svg"
+                            data-text="Включить/выключить звук"
+                        />
+                    </button>
+                    <style>
+                        #sound-icon {
+                            position: fixed;
+                            left: 50%;
+                            top: 50%;
+                            transform: translateX(-50%) translateY(-50%);
+                            font-size: 10em;
+                            opacity: 0;
+                            transition: opacity 0.5s ease;
+                            pointer-events: none; /* prevent interaction */
+                        }
+                        #sound-icon.visible {
+                            opacity: 1;
+                        }
+                    </style>
+                    <span id="sound-icon" data-on="🔉" data-off="🔇">🔉</span>
+                    <button id="ruslat-toggle">
+                        <span id="ruslat" style="font-family: monospace">ЛАТ</span>
+                    </button>
+                </div>
+                <script>
+                    document.querySelectorAll("button.icon").forEach((button) => {
+                        button.addEventListener("mouseover", () => {
+                            const hint = document.getElementById("hint");
+                            hint.style.opacity = 1;
+                            hint.textContent = button.dataset.text;
+                        });
+                        button.addEventListener("mouseout", () => {
+                            const hint = document.getElementById("hint");
+                            hint.style.opacity = 0;
+                            hint.textContent = "";
+                        });
+                    });
+                </script>
+            </div>
+            <div
+                id="hint"
+                style="
+                    position: fixed;
+                    right: 0;
+                    bottom: 0;
+                    transition: opacity 0.3s ease;
+                    opacity: 0;
+
+                    font-size: 3em;
+                    background-color: white;
+                    color: black;
+                    text-wrap: nowrap;
+
+                    padding: 8px 10px;
+                    border-radius: 4px;
+                    z-index: 1000; /* ensure it appears above other elements */
+                "
+            ></div>
+            <style>
+                #canvas {
+                    flex: 1;
+                    min-height: 0; /* allow it to shrink inside flex container */
+                    width: 100%;
+                    display: block;
+                }
+            </style>
+            <canvas id="canvas"></canvas>
+            <div id="footer" style="display: flex; gap: 10px">
+                <style>
+                    .dimmed {
+                        opacity: 0.6;
+                    }
+                    .gauge {
+                        display: flex;
+                        width: fit-content;
+                        height: fit-content;
+                        gap: 4px;
+                    }
+                </style>
+                <div class="gauge">
+                    <span class="dimmed">ИНСТР</span>
+                    <span id="ips"></span>
+                </div>
+                <div class="gauge">
+                    <span class="dimmed">ТАКТ</span>
+                    <span id="tps"></span>
+                </div>
+                <div class="gauge">
+                    <span class="dimmed">ЭКРАН</span>
+                    <span id="video-base"></span>
+                </div>
+                <div class="gauge">
+                    <span class="dimmed">РАЗМЕР</span>
+                    <span id="video-width"></span>
+                    <span class="dimmed">x</span>
+                    <span id="video-height"></span>
+                </div>
+                <div class="gauge">
+                    <span class="dimmed">ЛЕНТА</span>
+                    <style>
+                        .tape_active {
+                            color: white;
+                            background-color: green;
+                        }
+                    </style>
+                    <span id="tape_written_bytes">0000</span>
+                </div>
+            </div>
+            <div
+                id="shortcuts"
+                style="
+                    position: fixed;
+                    left: 50%;
+                    top: 50%;
+                    transform: translateX(-50%) translateY(-50%);
+                    width: fit-content;
+                    background-color: #333333;
+                    color: white;
+                    padding: 10px;
+                    font-size: 1.2em;
+                    text-align: center;
+                    z-index: 1000; /* ensure it appears above other elements */
+                "
+            >
+                <style>
+                    #shortcuts.visible {
+                        display: block;
+                    }
+                    #shortcuts {
+                        display: none;
+                    }
+                </style>
+                <div>
+                    <h1 style="font-weight: bold">cmd-k + ...</h1>
+                    <style>
+                        mark {
+                            background-color: #ffcc00;
+                            color: black;
+                            padding: 2px 4px;
+                            border-radius: 4px;
+                        }
+                    </style>
+                    <div id="shortcuts-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px">
+                        <style>
+                            #shortcuts-grid div {
+                                padding: 4px;
+                                white-space: nowrap;
+                                text-align: left;
+                            }
+                        </style>
+                        <div><mark>k</mark> - консоль</div>
+                        <div><mark>d</mark> - дизассемблер</div>
+                        <div><mark>r</mark> - перезапустить эмулятор</div>
+                        <div><mark>s</mark> - звук</div>
+                        <div><mark>f</mark> - полноэкранный режим</div>
+                    </div>
+                </div>
+            </div>
+            <div
+                id="disassembler_panel"
+                tabindex="0"
+                style="
+                    position: absolute;
+                    bottom: 0;
+                    right: 0;
+                    width: fit-content;
+                    height: fit-content;
+                    overflow: auto;
+                    background-color: #000000;
+                    color: #ffffffff;
+                    border: 1px solid white;
+                    font-family: monospace;
+                    display: none;
+                "
+            >
+                <style>
+                    span.disasm_code_offset {
+                        color: lightgreen;
+                        cursor: hand;
+                    }
+                    span.disasm_data_offset {
+                        color: lightblue;
+                        cursor: hand;
+                    }
+                </style>
+                <button id="disasm_form_code_shift_back_page">&lt;&lt;</button>
+                <button id="disasm_form_code_shift_back_one">&lt;</button>
+                <input id="disasm_code_address" style="width: 3em" value="0000" /> /
+                <input id="disasm_code_nb_lines" style="width: 2em" value="22" />
+                <button id="disasm_form_go_code">@</button>
+                <button id="disasm_form_code_shift_forward_one">&gt;</button>
+                <button id="disasm_form_code_shift_forward_page">&gt;&gt;</button>
+                <hr />
+                <code id="disasm_code"></code>
+                <hr />
+
+                <button id="disasm_form_data_shift_back_page">&lt;&lt;</button>
+                <button id="disasm_form_data_shift_back_one">&lt;</button>
+                <input id="disasm_data_address" style="width: 3em" value="0000" /> /
+                <input id="disasm_data_nb_lines" style="width: 2em" value="8" />
+                <button id="disasm_form_go_data">@</button>
+                <button id="disasm_form_data_shift_forward_one">&gt;</button>
+                <button id="disasm_form_data_shift_forward_page">&gt;&gt;</button>
+                <hr />
+                <code id="disasm_data"></code>
+            </div>
+            <div>
+                <div
+                    id="console"
+                    tabindex="0"
+                    style="
+                        position: absolute;
+                        bottom: 0;
+                        right: 0;
+                        width: 750px;
+                        height: 500px;
+                        overflow: auto;
+                        background-color: #000000;
+                        color: #ffffffff;
+                        border: 1px solid white;
+                        font-family: monospace;
+                        /* display: none; */
+                        z-index: 1000; /* ensure it appears above other elements */
+                    "
+                ></div>
+            </div>
+        </div>
+    </body>
+    <script type="module" src="./main.js"></script>
+</html>

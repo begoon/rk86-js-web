@@ -1,0 +1,12 @@
+name: test
+
+on: push
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: extractions/setup-just@v3
+            - uses: oven-sh/setup-bun@v2
+            - run: just test-ci
