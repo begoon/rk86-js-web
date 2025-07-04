@@ -33,6 +33,7 @@
 
 export function I8080(machine) {
     const { memory, io } = machine;
+
     this.memory = memory;
     this.io = io;
 
@@ -49,9 +50,6 @@ export function I8080(machine) {
     // Registers: b, c, d, e, h, l, m, a
     //            0  1  2  3  4  5  6  7
     this.regs = [0, 0, 0, 0, 0, 0, 0, 0];
-
-    this.memory = memory;
-    this.io = io;
 
     this.export = () => {
         const h8 = (n) => "0x" + toHex8(n);

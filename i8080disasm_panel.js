@@ -11,21 +11,21 @@ class I8080DisasmPanel {
         this.memory = memory;
     }
 
-    #wrap(addr) {
+    wrap(addr) {
         return (addr + this.memory.length()) % this.memory.length();
     }
 
-    #disasm(addr) {
+    disasm(addr) {
         const opcode = this.memory.read(addr);
         const byte2 = this.memory.read(addr + 1);
         const byte3 = this.memory.read(addr + 2);
         return i8080_opcode(opcode, byte2, byte3);
     }
 
-    #code(addr, lines) {
+    renderCode(addr, lines) {
         const output = [];
         for (let i = 0; i < lines; i++) {
-            const instr = this.#disasm(addr);
+            const instr = this.disasm(addr);
 
             let line = hex16(addr) + ": ";
 
@@ -39,8 +39,8 @@ class I8080DisasmPanel {
             chars = chars.replace(" ", "&nbsp;");
             line += "&nbsp;".repeat((3 - instr.length) * 2) + " " + chars + " ";
 
-            const color = instr.bad ? "red" : "";
-            line += `<span style='color: ${color}'>${instr.cmd}</span>`;
+            const color = instr.bad ? "red" : "white";
+            line += `<span style='color: ${color};'>${instr.cmd}</span>`;
             line += "&nbsp;".repeat(5 - instr.cmd.length);
 
             const format_argument = (action, addr) => {
@@ -64,12 +64,16 @@ class I8080DisasmPanel {
             }
 
             output.push(line);
-            addr = this.#wrap(addr + instr.length);
+            addr = this.wrap(addr + instr.length);
         }
-        document.getElementById("disasm_code").innerHTML = output.join("<br />");
+        return output.join("<br />");
     }
 
-    #dump(addr, lines) {
+    #code(addr, lines) {
+        document.getElementById("disasm_code").innerHTML = this.renderCode(addr, lines);
+    }
+
+    renderDump(addr, lines) {
         const output = [];
         while (lines--) {
             let line = hex16(addr) + ": ";
@@ -81,10 +85,14 @@ class I8080DisasmPanel {
                 const ch = this.memory.read(addr + i);
                 line += String.fromCharCode(ch < 32 || ch > 127 ? 0x2e : ch);
             }
-            addr = this.#wrap(addr + DATA_WIDTH);
+            addr = this.wrap(addr + DATA_WIDTH);
             output.push(line);
         }
-        document.getElementById("disasm_data").innerHTML = output.join("<br />");
+        return output.join("<br />");
+    }
+
+    #dump(addr, lines) {
+        return this.renderDump(addr, lines);
     }
 
     form_go_code() {
@@ -115,16 +123,16 @@ class I8080DisasmPanel {
             while (nb_lines++ < 0) {
                 let i;
                 for (i = 3; i > 0; --i) {
-                    const descr = this.#disasm(this.#wrap(addr - i));
+                    const descr = this.disasm(this.wrap(addr - i));
                     if (descr.length == i) break;
                 }
                 i = i > 0 ? i : 1;
-                addr = this.#wrap(addr - i);
+                addr = this.wrap(addr - i);
             }
         } else {
             while (nb_lines-- > 0) {
-                const descr = this.#disasm(addr);
-                addr = this.#wrap(addr + descr.length);
+                const descr = this.disasm(addr);
+                addr = this.wrap(addr + descr.length);
             }
         }
         this.#click_go_code(hex16(addr));
@@ -147,7 +155,7 @@ class I8080DisasmPanel {
         const offset = one ? 1 : DATA_WIDTH;
 
         const from = parseInt("0x" + document.getElementById("disasm_data_address").value);
-        const to = this.#wrap(from + offset * direction);
+        const to = this.wrap(from + offset * direction);
         this.click_go_data(hex16(to));
     }
 
