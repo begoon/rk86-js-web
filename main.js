@@ -77,16 +77,19 @@ export async function main() {
     const header = document.getElementById("header");
     const footer = document.getElementById("footer");
     const disassember_panel = document.getElementById("disassembler_panel");
+    const terminal_panel = document.getElementById("console");
     document.addEventListener("fullscreenchange", () => {
         const fullscreen = document.fullscreenElement;
         if (!fullscreen) {
             header.classList.remove("hidden");
             footer.classList.remove("hidden");
             disassember_panel.classList.remove("hidden");
+            terminal_panel.classList.remove("hidden");
         } else {
             header.classList.add("hidden");
             footer.classList.add("hidden");
             disassember_panel.classList.add("hidden");
+            terminal_panel.classList.add("hidden");
         }
     });
 
@@ -125,9 +128,9 @@ export async function main() {
     machine.ui.i8080disasm = new I8080DisasmPanel(machine.memory);
     window.i8080disasm = machine.ui.i8080disasm;
 
-    machine.ui.start_update_perf();
+    machine.ui.terminal = new Console(machine);
 
-    const konsole = new Console(machine);
+    machine.ui.start_update_perf();
 }
 
 await main();

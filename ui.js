@@ -71,10 +71,22 @@ export class UI {
 
     toggle_disassembler() {
         this.disassembler_visible = !this.disassembler_visible;
+        if (this.terminal_visible && this.disassembler_visible) this.toggle_terminal();
+
         this.disassembler_panel.style.display = this.disassembler_visible ? "block" : "none";
         this.disassembler_icon.src = "i/disassembler-" + (this.disassembler_visible ? "on" : "off") + ".svg";
         this.machine.ui.i8080disasm.refresh();
         this.machine.ui.i8080disasm.go_code(this.machine.cpu.pc);
+    }
+
+    toggle_terminal() {
+        this.terminal_visible = !this.terminal_visible;
+        if (this.terminal_visible && this.disassembler_visible) this.toggle_disassembler();
+
+        this.terminal_panel.style.display = this.terminal_visible ? "block" : "none";
+
+        if (this.terminal_visible) this.terminal.focus();
+        // this.terminal_icon.src = "i/terminal-" + (this.disassembler_visible ? "on" : "off") + ".svg";
     }
 
     configureEventListeners() {
@@ -101,50 +113,99 @@ export class UI {
             setTimeout(() => icon.classList.remove("visible"), 2000);
         });
 
-        this.disassembler_panel = document.getElementById("disassembler_panel");
-        this.disassembler_icon = document.getElementById("disassembler_icon");
-        this.disassembler_visible = false;
-
         document.getElementById("disassembler_toggle").addEventListener("click", () => {
             this.toggle_disassembler();
         });
 
-        this.disassemblerOffsetX = 0;
-        this.disassemblerOffsetY = 0;
-        this.disassemberIsDragging = false;
+        {
+            this.disassembler_panel = document.getElementById("disassembler_panel");
+            this.disassembler_icon = document.getElementById("disassembler_icon");
+            this.disassembler_visible = false;
 
-        disassembler_panel.addEventListener("mousedown", (e) => {
-            this.disassemberIsDragging = true;
-            this.disassemblerOffsetX = e.clientX - this.disassembler_panel.offsetLeft;
-            this.disassemblerOffsetY = e.clientY - this.disassembler_panel.offsetTop;
-        });
+            this.disassemblerOffsetX = 0;
+            this.disassemblerOffsetY = 0;
+            this.disassemblerIsDragging = false;
 
-        disassembler_panel.addEventListener("mousemove", (e) => {
-            if (this.disassemberIsDragging) {
-                const left = e.clientX - this.disassemblerOffsetX;
-                const top = e.clientY - this.disassemblerOffsetY;
+            this.disassembler_panel.addEventListener("mousedown", (e) => {
+                this.disassemblerIsDragging = true;
+                this.disassemblerOffsetX = e.clientX - this.disassembler_panel.offsetLeft;
+                this.disassemblerOffsetY = e.clientY - this.disassembler_panel.offsetTop;
+            });
 
-                const width = document.documentElement.clientWidth;
-                const height = document.documentElement.clientHeight;
+            this.disassembler_panel.addEventListener("mousemove", (e) => {
+                if (this.disassemblerIsDragging) {
+                    const left = e.clientX - this.disassemblerOffsetX;
+                    const top = e.clientY - this.disassemblerOffsetY;
 
-                if (left < 0 || left + this.disassembler_panel.offsetWidth > width - 1) {
-                    return;
+                    const width = document.documentElement.clientWidth;
+                    const height = document.documentElement.clientHeight;
+
+                    if (left < 0 || left + this.disassembler_panel.offsetWidth > width - 1) {
+                        return;
+                    }
+                    if (top < 0 || top + this.disassembler_panel.offsetHeight > height - 1) {
+                        return;
+                    }
+                    this.disassembler_panel.style.left = left + "px";
+                    this.disassembler_panel.style.top = top + "px";
                 }
-                if (top < 0 || top + this.disassembler_panel.offsetHeight > height - 1) {
-                    return;
-                }
-                this.disassembler_panel.style.left = left + "px";
-                this.disassembler_panel.style.top = top + "px";
-            }
+            });
+
+            this.disassembler_panel.addEventListener("mouseup", () => {
+                this.disassemblerIsDragging = false;
+            });
+        }
+
+        document.getElementById("console_toggle").addEventListener("click", () => {
+            this.toggle_terminal();
         });
 
-        disassembler_panel.addEventListener("mouseup", () => {
-            this.disassemberIsDragging = false;
-        });
+        {
+            this.terminal_panel = document.getElementById("terminal_panel");
+            this.terminal_icon = document.getElementById("terminal_icon");
+            this.terminal_visible = false;
+
+            this.teminalOffsetX = 0;
+            this.teminalOffsetY = 0;
+            this.teminalIsDragging = false;
+
+            this.terminal_panel.addEventListener("mousedown", (e) => {
+                this.terminalIsDragging = true;
+                this.terminalOffsetX = e.clientX - this.terminal_panel.offsetLeft;
+                this.terminalOffsetY = e.clientY - this.terminal_panel.offsetTop;
+            });
+
+            this.terminal_panel.addEventListener("mousemove", (e) => {
+                if (this.terminalIsDragging) {
+                    const left = e.clientX - this.terminalOffsetX;
+                    const top = e.clientY - this.terminalOffsetY;
+
+                    const width = document.documentElement.clientWidth;
+                    const height = document.documentElement.clientHeight;
+
+                    if (left < 0 || left + this.terminal_panel.offsetWidth > width - 1) {
+                        return;
+                    }
+                    if (top < 0 || top + this.terminal_panel.offsetHeight > height - 1) {
+                        return;
+                    }
+                    this.terminal_panel.style.left = left + "px";
+                    this.terminal_panel.style.top = top + "px";
+                }
+            });
+
+            this.terminal_panel.addEventListener("mouseup", () => {
+                this.terminalIsDragging = false;
+            });
+        }
 
         document.onkeydown = (event) => {
             if (this.command_mode) {
                 switch (event.code) {
+                    case "KeyK":
+                        this.toggle_terminal();
+                        event.preventDefault();
+                        break;
                     case "KeyD":
                         this.toggle_disassembler();
                         this.disassembler_panel.focus();

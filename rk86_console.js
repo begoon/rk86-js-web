@@ -1,4 +1,4 @@
-﻿import { Terminal } from "./xterm.mjs";
+﻿import { Terminal } from "./xterm/xterm.mjs";
 
 import "./format.js";
 import { hex16 } from "./hex.js";
@@ -469,6 +469,16 @@ export function Console(machine) {
         this.term.writeln("%04X-%04X: %04X".format(from, to, checksum));
     };
 
+    this.history_cmd = (args) => {
+        const limit = 10;
+        if (history.length === 0) return;
+        const from = Math.max(0, history.length - limit);
+        history.slice(from).forEach((cmd, index) => {
+            this.term.writeln("%d: %s".format(from + index + 1, cmd));
+        });
+        this.term.writeln("\nКлавиши вверх/вниз для навигации по истории команд.");
+    };
+
     this.help_cmd = (args) => {
         for (var cmd in this.commands) {
             this.term.writeln("%s - %s".format(cmd, this.commands[cmd][1]));
@@ -495,6 +505,7 @@ export function Console(machine) {
         be: [this.edit_breakpoints_cmd, "create/edit breakpoints / be 1 type:exec address:0xf86c count:3"],
         bd: [this.delete_breakpoints_cmd, "delete breakpoints / bd 1"],
         cs: [this.check_sum_cmd, "calculate checksum / cs start_address, end_address"],
+        h: [this.history_cmd, "предыдущие команды / h"],
         "?": [this.help_cmd, "this help / ?"],
     };
 
@@ -609,10 +620,15 @@ export function Console(machine) {
         this.runner = machine.runner;
 
         this.term = new Terminal({ cols: 80, rows: 24, fontSize: 14, theme: { foreground: "#00ff00" } });
+
         this.term.prompt = () => this.term.write("\r\n> ");
 
-        this.term.open(document.getElementById("console"));
+        this.terminalPanel = document.getElementById("terminal_panel");
+        this.terminalPanel.style.transform = "scale(1.0)";
 
+        this.term.open(this.terminalPanel);
+
+        // This makes the Space key work, when the terminal on top of other elements.
         this.term.textarea.addEventListener("keydown", (e) => e.stopPropagation());
 
         this.term.attachCustomKeyEventHandler((ev) => {
@@ -636,6 +652,8 @@ export function Console(machine) {
         this.term.focus();
         this.term.prompt();
     };
+
+    this.focus = () => this.term.focus();
 
     this.pause = function () {
         this.term.writeln("Paused at %04X".format(this.runner.cpu.pc));
