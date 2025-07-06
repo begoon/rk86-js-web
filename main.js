@@ -132,6 +132,11 @@ export async function main() {
     machine.ui.terminal.init(machine);
 
     machine.ui.start_update_perf();
+
+    window.ui = machine.ui;
+    window.cpu = machine.cpu;
+    window.memory = machine.memory;
+    window.runner = machine.runner;
 }
 
 await main();

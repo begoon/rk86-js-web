@@ -69,6 +69,19 @@ export class UI {
         document.getElementById("video-height").textContent = height.toString();
     }
 
+    toggle_assembler() {
+        this.assembler_visible = !this.assembler_visible;
+
+        this.assembler_panel.style.display = this.assembler_visible ? "block" : "none";
+        this.canvas.style.display = this.assembler_visible ? "none" : "block";
+
+        if (this.assembler_visible) {
+            this.assembler_panel.focus();
+        } else {
+            this.canvas.focus();
+        }
+    }
+
     toggle_disassembler() {
         this.disassembler_visible = !this.disassembler_visible;
         if (this.terminal_visible && this.disassembler_visible) this.toggle_terminal();
@@ -112,6 +125,15 @@ export class UI {
             icon.classList.add("visible");
             setTimeout(() => icon.classList.remove("visible"), 2000);
         });
+
+        document.getElementById("assembler_toggle").addEventListener("click", () => {
+            this.toggle_assembler();
+        });
+
+        {
+            this.assembler_panel = document.getElementById("assembler_panel");
+            this.assembler_visible = false;
+        }
 
         document.getElementById("disassembler_toggle").addEventListener("click", () => {
             this.toggle_disassembler();
@@ -205,6 +227,9 @@ export class UI {
                     case "KeyK":
                         this.toggle_terminal();
                         event.preventDefault();
+                        break;
+                    case "KeyA":
+                        this.toggle_assembler();
                         break;
                     case "KeyD":
                         this.toggle_disassembler();

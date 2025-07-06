@@ -83,6 +83,9 @@
                     <button id="load" class="icon" data-text="Загрузить программу">
                         <img class="icon" src="i/load.svg" />
                     </button>
+                    <button id="assembler_toggle" class="icon" data-text="Ассемблер">
+                        <img class="icon" id="assembler_icon" src="i/asm.svg" />
+                    </button>
                     <button id="disassembler_toggle" class="icon" data-text="Дизассемблер">
                         <img class="icon" id="disassembler_icon" src="i/disassembler-off.svg" />
                     </button>
@@ -170,6 +173,15 @@
                 }
             </style>
             <canvas id="canvas"></canvas>
+            <style>
+                #assembler_panel {
+                    flex: 1;
+                    min-height: 0; /* allow it to shrink inside flex container */
+                    width: 100%;
+                    display: none;
+                }
+            </style>
+            <iframe id="assembler_panel" src="./i8080asm.html"></iframe>
             <div id="footer" style="display: flex; gap: 10px">
                 <style>
                     .dimmed {
@@ -254,6 +266,7 @@
                             }
                         </style>
                         <div><mark>k</mark> - консоль</div>
+                        <div><mark>a</mark> - ассемблер</div>
                         <div><mark>d</mark> - дизассемблер</div>
                         <div><mark>r</mark> - перезапустить эмулятор</div>
                         <div><mark>s</mark> - звук</div>
@@ -298,7 +311,6 @@
                 <hr />
                 <code id="disasm_code"></code>
                 <hr />
-
                 <button id="disasm_form_data_shift_back_page">&lt;&lt;</button>
                 <button id="disasm_form_data_shift_back_one">&lt;</button>
                 <input id="disasm_data_address" style="width: 3em" value="0000" /> /
