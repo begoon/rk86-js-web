@@ -42,7 +42,7 @@ export async function executor(filename, verbose = false, timeout = 60 * 20) {
         cpu.instruction();
         if (cpu.pc == 0) {
             tracer.flush();
-            if (verbose) tracer.writeln("Jump to 0000 from " + pc.toString(16));
+            tracer.writeln("Jump to 0000 from " + pc.toString(16));
             success = tracer.success;
             break;
         }
