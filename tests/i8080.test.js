@@ -1,7 +1,13 @@
+import { env } from "node:process";
+
 import { beforeEach, expect, test } from "bun:test";
 
+import { hex8 } from "../hex.js";
 import { I8080 } from "../i8080.js";
 import { Memory } from "../rk86_memory.js";
+
+import { CPI } from "./data/cpi_data.js";
+import { DAA } from "./data/daa_data.js";
 
 let memory;
 let cpu;
@@ -65,6 +71,86 @@ test("daa", () => {
     expect(cpu.pf).toBe(0);
     expect(cpu.cf).toBe(1);
     expect(cpu.store_flags()).toBe(0b00010011);
+});
+
+test("daa/*", () => {
+    cpu.set_rp(0, 0xaabb); // bc
+    cpu.set_rp(2, 0xccdd); // de
+    cpu.set_rp(4, 0xeeff); // hl
+    cpu.set_rp(6, 0x1122); // sp
+
+    cpu.pc = 0x0001;
+
+    for (let cf = 0; cf < 2; ++cf) {
+        for (let hf = 0; hf < 2; ++hf) {
+            for (let a = 0; a < 256; ++a) {
+                cpu.set_cf = cf;
+                cpu.set_hf = hf;
+                cpu.set_a(a);
+
+                cpu.execute(0x27); // DAA
+
+                // Should not advance PC because DAA has no arguments.
+                expect(cpu.pc).toBe(0x0001);
+
+                expect(cpu.bc()).toBe(0xaabb);
+                expect(cpu.de()).toBe(0xccdd);
+                expect(cpu.hl()).toBe(0xeeff);
+                expect(cpu.sp).toBe(0x1122);
+
+                const i = a + (hf << 8) + (cf << 9);
+                const result =
+                    `` +
+                    `cf:${cf} hf:${hf} a:${hex8(a)} -> ` +
+                    `a:${hex8(cpu.a())} ` +
+                    `flags:${cpu.store_flags().toString(2).padStart(8, "0")}`;
+
+                expect(result).toBe(DAA[i]);
+            }
+        }
+    }
+});
+
+test("cpi/*", async () => {
+    cpu.set_rp(0, 0xaabb); // bc
+    cpu.set_rp(2, 0xccdd); // de
+    cpu.set_rp(4, 0xeeff); // hl
+    cpu.set_rp(6, 0x1122); // sp
+
+    let i = 0;
+
+    const output = [];
+    for (let a = 0; a < 0x100; ++a) {
+        for (let imm8 = 0; imm8 < 0x100; ++imm8) {
+            cpu.pc = 0x0000;
+
+            cpu.set_a(a);
+            cpu.retrieve_flags(0x00);
+            memory.write_raw(cpu.pc, imm8);
+
+            cpu.execute(0xfe); // CPI
+
+            expect(cpu.pc).toBe(0x0001);
+
+            expect(cpu.bc()).toBe(0xaabb);
+            expect(cpu.de()).toBe(0xccdd);
+            expect(cpu.hl()).toBe(0xeeff);
+            expect(cpu.sp).toBe(0x1122);
+
+            const result =
+                `` +
+                `a:${hex8(a)} imm8:${hex8(imm8)} -> ` +
+                `a:${hex8(cpu.a())} ` +
+                `flags:${cpu.store_flags().toString(2).padStart(8, "0")}`;
+
+            expect(result).toBe(CPI[i]);
+            i += 1;
+
+            output.push(result);
+        }
+    }
+
+    if (env.UPDATE) await Bun.write("./tests/cpi_data-X.js", "export const CPI = " + JSON.stringify(output, null, 4));
 });
 
 test("unused flags bits defaults", () => {
