@@ -158,7 +158,7 @@ test("parse_rk86_binary variations", () => {
 
 test("throws when file is too long", () => {
     expect(() => parser.parse_rk86_binary("long.pki", new Array(0x10001))).toThrow(
-        'ERROR! Loaded file "long.pki" length 65537 is more than 65556.'
+        'Ошибка! Длина Файла "long.pki" 65537 превышает 65556.'
     );
 });
 
