@@ -13,7 +13,6 @@ export class Screen {
 
         this.cursor_width = this.char_width;
         this.cursor_height = 1;
-        this.cursor_offset_white = 27;
 
         this.scale_x = 1;
         this.scale_y = 1;
@@ -24,6 +23,10 @@ export class Screen {
         this.cursor_state = false;
         this.cursor_x = 0;
         this.cursor_y = 0;
+
+        this.last_cursor_state = false;
+        this.last_cursor_x = 0;
+        this.last_cursor_y = 0;
 
         this.video_memory_base = 0;
         this.video_memory_size = 0;
@@ -109,17 +112,22 @@ export class Screen {
     }
 
     draw_cursor(x, y, visible) {
-        this.ctx.drawImage(
-            this.font,
-            2,
-            this.cursor_offset_white + (visible ? 0 : 1),
-            this.char_width,
-            1,
-            x * this.char_width * this.scale_x,
-            (y * (this.char_height + this.char_height_gap) + this.char_height) * this.scale_y,
-            this.char_width * this.scale_x,
-            1 * this.scale_y
-        );
+        const cy = (y) => (y * (this.char_height + this.char_height_gap) + this.char_height) * this.scale_y;
+        if (this.last_cursor_x !== x || this.last_cursor_y !== y) {
+            if (this.last_cursor_state)
+                this.ctx.clearRect(
+                    this.last_cursor_x * this.char_width * this.scale_x,
+                    cy(this.last_cursor_y),
+                    this.cursor_width * this.scale_x,
+                    this.cursor_height * this.scale_y
+                );
+            this.last_cursor_state = this.cursor_state;
+            this.last_cursor_x = x;
+            this.last_cursor_y = y;
+        }
+        const cx = x * this.char_width * this.scale_x;
+        this.ctx.fillStyle = visible ? "#ffffff" : "#000000";
+        this.ctx.fillRect(cx, cy(y), this.cursor_width * this.scale_x, this.cursor_height * this.scale_y);
     }
 
     flip_cursor() {

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "typeRoots": [
+      "./",
+      "./node_modules/@types"
+    ],
+    "noEmit": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "maxNodeModuleJsDepth": 10,
+    "module": "esnext",
+    "target": "es2023",
+    "strict": true,
+    "lib": [
+      "es2023",
+      "dom"
+    ]
+  },
+  "include": [
+    "./**/*.js",
+    "./types/**/*.d.ts",
+    "./test_load_file.d.ts"
+  ]
+}
