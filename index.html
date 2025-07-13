@@ -41,7 +41,10 @@
                 #header.hidden,
                 #footer.hidden,
                 #disassembler_panel.hidden,
-                #terminal_panel.hidden {
+                #terminal_panel.hidden,
+                #visualizer_panel.hidden,
+                #keyboard_panel.hidden {
+                    display: none;
                     visibility: hidden;
                 }
                 .icon {
@@ -77,7 +80,7 @@
                 <button id="fullscreen" class="icon" data-text="Полноэкранный режим">
                     <img class="icon" src="i/fullscreen.svg" />
                 </button>
-                <button id="keyboard" class="icon" data-text="Клавиатура">
+                <button id="keyboard_toggle" class="icon" data-text="Клавиатура">
                     <img class="icon" src="i/keyboard.svg" />
                 </button>
                 <button id="help" class="icon" data-text="Помощь">
@@ -275,7 +278,7 @@
                                 white-space: nowrap;
                                 text-align: left;
                                 display: grid;
-                                grid-template-columns: 1.4em auto;
+                                grid-template-columns: 1.5em auto;
                             }
                             #shortcuts-panel mark {
                                 background-color: #ffcc00;
@@ -300,6 +303,7 @@
                         <div><mark>s</mark> - звук</div>
                         <div><mark>f</mark> - полноэкранный режим</div>
                         <div><mark>w</mark> - сохранить состояние эмулятора</div>
+                        <div><mark>b</mark> - помощь по клавиатуре</div>
                     </div>
                 </div>
             </div>
@@ -370,6 +374,22 @@
             <div>
                 <div
                     id="visualizer_panel"
+                    tabindex="0"
+                    style="
+                        position: fixed;
+                        bottom: 2em;
+                        right: 1em;
+                        width: fit-content;
+                        height: fit-content;
+                        overflow: auto;
+                        border: 1px solid #ffffff;
+                        display: none;
+                    "
+                ></div>
+            </div>
+            <div>
+                <div
+                    id="keyboard_panel"
                     tabindex="0"
                     style="
                         position: fixed;

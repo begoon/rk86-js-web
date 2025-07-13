@@ -1,6 +1,7 @@
 import { I8080 } from "./i8080.js";
 import Visualizer from "./i8080_visualizer.js";
 import I8080DisasmPanel from "./i8080disasm_panel.js";
+import KeyboardVisualizer from "./kbd-js.js";
 import { Console } from "./rk86_console.js";
 import FileParser from "./rk86_file_parser.js";
 import { rk86_font_image } from "./rk86_font.js";
@@ -152,11 +153,18 @@ export class UI {
 
     toggle_visualizer() {
         this.visualizer_visible = !this.visualizer_visible;
-        if (this.terminal_visible && this.disassembler_visible) this.toggle_disassembler();
 
         this.visualizer_panel.style.display = this.visualizer_visible ? "block" : "none";
 
         this.toggle_icon("visualizer_toggle", this.visualizer_visible);
+    }
+
+    toggle_keyboard() {
+        this.keyboard_visible = !this.keyboard_visible;
+
+        this.keyboard_panel.style.display = this.keyboard_visible ? "block" : "none";
+
+        this.toggle_icon("keyboard_toggle", this.keyboard_visible);
     }
 
     emulator_snapshot() {
@@ -215,6 +223,13 @@ export class UI {
         this.visualizer_visible = false;
 
         moveable(this.visualizer_panel)();
+
+        // keyboard
+
+        this.keyboard_panel = $("keyboard_panel");
+        this.keyboard_visible = false;
+
+        moveable(this.keyboard_panel)();
 
         $("visualizer_toggle").addEventListener("click", () => this.toggle_visualizer());
 
@@ -276,6 +291,9 @@ export class UI {
                         break;
                     case "KeyW":
                         this.emulator_snapshot();
+                        break;
+                    case "KeyB":
+                        this.toggle_keyboard();
                         break;
                 }
                 this.command_mode = false;
@@ -420,7 +438,7 @@ export class UI {
         };
 
         $("help").addEventListener("click", () => openLink("help.html"));
-        $("keyboard").addEventListener("click", () => openLink("keyboard.html"));
+        $("keyboard_toggle").addEventListener("click", () => this.toggle_keyboard());
     }
 
     update_activity_indicator = (active) => {
@@ -654,6 +672,8 @@ export async function main() {
     const footer = document.getElementById("footer");
     const disassember_panel = document.getElementById("disassembler_panel");
     const terminal_panel = document.getElementById("terminal_panel");
+    const visualizer_panel = document.getElementById("visualizer_panel");
+    const keyboard_panel = document.getElementById("keyboard_panel");
 
     document.addEventListener("fullscreenchange", () => {
         const fullscreen = document.fullscreenElement;
@@ -662,11 +682,15 @@ export async function main() {
             footer.classList.remove("hidden");
             disassember_panel.classList.remove("hidden");
             terminal_panel.classList.remove("hidden");
+            visualizer_panel.classList.remove("hidden");
+            keyboard_panel.classList.remove("hidden");
         } else {
             header.classList.add("hidden");
             footer.classList.add("hidden");
             disassember_panel.classList.add("hidden");
             terminal_panel.classList.add("hidden");
+            visualizer_panel.classList.add("hidden");
+            keyboard_panel.classList.add("hidden");
         }
     });
 
@@ -783,6 +807,20 @@ export async function main() {
         while (loaded.firstChild) target.appendChild(loaded.firstChild);
 
         machine.ui.visualizer = new Visualizer();
+    }
+
+    // keyboard visualizer
+    {
+        const template = document.createElement("template");
+        const content = await (await fetch("./kbd-js.html")).text();
+        template.innerHTML = content;
+
+        const loaded = template.content.querySelector("#keyboard_panel");
+        const target = document.getElementById("keyboard_panel");
+
+        while (loaded.firstChild) target.appendChild(loaded.firstChild);
+
+        KeyboardVisualizer();
     }
 }
 
