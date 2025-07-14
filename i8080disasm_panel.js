@@ -113,7 +113,7 @@ class I8080DisasmPanel {
         this.#code_shift(addr, direction * nb_lines);
     }
 
-    #click_go_code(addr) {
+    click_go_code(addr) {
         document.getElementById("disasm_code_address").value = addr;
         this.form_go_code();
     }
@@ -135,7 +135,7 @@ class I8080DisasmPanel {
                 addr = this.wrap(addr + descr.length);
             }
         }
-        this.#click_go_code(hex16(addr));
+        this.click_go_code(hex16(addr));
         return addr;
     }
 

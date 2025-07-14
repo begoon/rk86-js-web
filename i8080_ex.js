@@ -30,4 +30,8 @@ async function main(enable_exerciser, verbose = false) {
 const ex1 = process.argv.includes("--ex1");
 const verbose = process.argv.includes("--verbose");
 
+const started = performance.now();
+
 await main(ex1, verbose);
+
+console.log("duration", ((performance.now() - started) / 1000.0).toFixed(3) + "s");

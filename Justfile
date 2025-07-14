@@ -10,9 +10,12 @@ test-js:
   bun test
 
 test-i8080:
-  bun run i8080_ex.js
+  node i8080_ex.js
 
-test-ex1:
-  bun run i8080_ex.js --ex1 --verbose
+test-ex1-bun:
+  bun i8080_ex.js --ex1 --verbose
 
-test-ci: test-js test-ex1
+test-ex1-node:
+  node i8080_ex.js --ex1 --verbose
+
+test-ci: test-js test-ex1-bun test-ex1-node

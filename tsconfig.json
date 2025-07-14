@@ -3,7 +3,6 @@
     "checkJs": true,
     "allowJs": true,
     "typeRoots": [
-      "./",
       "./node_modules/@types"
     ],
     "noEmit": true,
@@ -21,6 +20,5 @@
   "include": [
     "./**/*.js",
     "./types/**/*.d.ts",
-    "./test_load_file.d.ts"
   ]
 }

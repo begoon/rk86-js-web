@@ -10,3 +10,16 @@ jobs:
             - uses: extractions/setup-just@v3
             - uses: oven-sh/setup-bun@v2
             - run: just test-ci
+
+    bench-node:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - run: just test-ex1-node
+
+    bench-bun:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+            - run: just test-ex1-bun

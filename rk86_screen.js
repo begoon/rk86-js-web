@@ -201,6 +201,9 @@ export class Screen {
         setTimeout(() => this.draw_screen(), Screen.update_rate);
     }
 
+    /**
+     * @param {MouseEvent} event
+     */
     handle_mousemove(event) {
         const canvas = this.machine.ui.canvas;
         const rect = canvas.getBoundingClientRect();
