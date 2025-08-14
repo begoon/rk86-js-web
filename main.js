@@ -1,8 +1,10 @@
+import "./console-terminal.js";
+import { hex16 } from "./hex.js";
 import { I8080 } from "./i8080.js";
 import Visualizer from "./i8080_visualizer.js";
 import I8080DisasmPanel from "./i8080disasm_panel.js";
 import * as KeyboardVisualizer from "./kbd-js.js";
-import { Console } from "./rk86_console.js";
+import moveable from "./moveable.js";
 import * as FileParser from "./rk86_file_parser.js";
 import { rk86_font_image } from "./rk86_font.js";
 import { Keyboard } from "./rk86_keyboard.js";
@@ -12,11 +14,8 @@ import { Runner } from "./rk86_runner.js";
 import { Screen } from "./rk86_screen.js";
 import { rk86_snapshot, rk86_snapshot_restore } from "./rk86_snapshot.js";
 import { Tape } from "./rk86_tape.js";
-import { tape_catalog } from "./tape_catalog.js";
-
-import { hex16 } from "./hex.js";
-import moveable from "./moveable.js";
 import { saveAs } from "./saver.js";
+import { tape_catalog } from "./tape_catalog.js";
 
 const elements = new Map();
 
@@ -228,11 +227,6 @@ export class UI {
     toggle_keyboard() {
         const visible = UI.toggleVisibility("keyboard_panel");
         UI.toggleIcon("keyboard_toggle");
-        // this.keyboard_visible = !this.keyboard_visible;
-
-        // this.keyboard_panel.style.display = this.keyboard_visible ? "block" : "none";
-
-        // UI.toggleIcon("keyboard_toggle", this.keyboard_visible);
     }
 
     computer_snapshot_name = "rk86-snapshot";
@@ -890,8 +884,10 @@ export async function main() {
     machine.ui.i8080disasm = new I8080DisasmPanel(machine.memory);
     window.i8080disasm = machine.ui.i8080disasm;
 
-    machine.ui.terminal = new Console(machine);
-    machine.ui.terminal.init(machine);
+    machine.ui.terminal = $("terminal_panel");
+    $("terminal_panel").onCommand = (cmd) => {
+        console.log(`command received: ${cmd}`);
+    };
 
     machine.ui.start_update_perf();
 

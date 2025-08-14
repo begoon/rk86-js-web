@@ -2,32 +2,22 @@
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     </head>
-    <body style="font-family: monospace">
-        <textarea
-            id="terminal_panel"
-            tabindex="0"
-            style="
-                width: 81ch;
-                height: 10em;
-                overflow: auto;
-                border: 1px solid green;
-                font-family: monospace;
-                font-size: 14px;
-                background-color: black;
-                color: lightgreen;
-            "
-        ></textarea>
+        <div style="font-family: monospace; width: 81ch; display: grid; grid-template-rows: auto 1fr">
+            <div
+                id="output"
+                style="
+                    height: 10em;
+                    background-color: black;
+                    color: lightgreen;
+                    overflow-y: auto;
+                    border: 1px solid #ccc;
+                "
+            ></div>
+            <input type="text" id="input"/>
+        </div>
         <br />
         <!-- !!! -->
         <div id="debug" style="display: grid; grid-template-columns: 1fr 10fr">
-            <div>key</div>
-            <div id="key"></div>
-            <div>line</div>
-            <div id="line"></div>
-            <div>cmd</div>
-            <div><mark id="cmd"></mark></div>
-            <div>msg</div>
-            <div id="msg"></div>
             <div>history</div>
             <div id="history"></div>
         </div>
@@ -39,8 +29,7 @@
             const HISTORY_SIZE = 100;
             let historyIndex = 0;
 
-            const terminal = $("terminal_panel");
-            terminal.focus();
+            const output = $("output");
 
             function printHistory() {
                 $("history").innerHTML = history
@@ -53,88 +42,63 @@
                     })
                     .join("");
             }
-            let position = 0;
 
-            const lastLine = () => terminal.value.split("\n").at(-1)?.trim() || "";
+            const input = $("input");
+            input.focus();
 
-            terminal.addEventListener("keyup", (event) => {
-                $("line").innerHTML = lastLine();
-                event.preventDefault();
-            });
+            function history(direction) {
+                if (input.value.trim()) historyIndex += direction;
 
-            function navigateHistory(direction) {
-                historyIndex += direction;
                 if (historyIndex >= history.length) historyIndex = 0;
                 if (historyIndex < 0) historyIndex = history.length - 1;
-                const v = terminal.value.split("\n");
-                v[v.length - 1] = history[historyIndex];
-                terminal.value = v.join("\n");
-                event.preventDefault();
+                input.value = history[historyIndex] || "";
                 printHistory();
             }
 
-            terminal.addEventListener("keydown", (event) => {
-                $("msg").innerHTML = "";
-                $("key").innerHTML = `${event.key} (${event.keyCode})`;
-
+            input.addEventListener("keydown", (event) => {
                 switch (event.key) {
-                    case "Backspace": {
-                        event.preventDefault();
-                        if (history[historyIndex].length === 0) return;
-                        history[historyIndex] = history[historyIndex].slice(0, -1);
-                        terminal.value = terminal.value.slice(0, -1);
-                        break;
-                    }
                     case "Escape": {
                         event.preventDefault();
-
-                        terminal.value = terminal.value.slice(0, -history[historyIndex].length);
-                        historyIndex = 0;
-                        history[historyIndex] = "";
-                        printHistory();
+                        input.value = "";
                         break;
                     }
                     case "Enter": {
                         event.preventDefault();
 
-                        const cmd = lastLine();
+                        const cmd = input.value.trim().replace(/\n$/, "");
                         if (cmd === "") return;
-                        $("cmd").innerHTML = cmd;
+                        input.value = "";
 
-                        if (historyIndex > 0) history[0] = cmd;
+                        put(`RUN [${cmd}]\n`);
 
-                        history.unshift(""); // insert a new empty line
-                        putln("");
-                        if (history.length > HISTORY_SIZE) history.shift();
+                        if (historyIndex === 0 && history[0] === cmd) return;
+
+                        history.unshift(cmd);
+                        if (history.length > HISTORY_SIZE) history.pop();
                         historyIndex = 0;
+
                         printHistory();
                         break;
                     }
                     case "ArrowUp": {
-                        navigateHistory(1);
+                        event.preventDefault();
+                        history(1);
                         break;
                     }
                     case "ArrowDown": {
-                        navigateHistory(-1);
+                        event.preventDefault();
+                        history(-1);
                         break;
                     }
-                    default:
-                        if (event.key.length === 1) history[historyIndex] += event.key;
                 }
-
-                terminal.scrollTop = terminal.scrollHeight;
             });
             function put(str) {
-                terminal.value += str;
-                history[historyIndex] += str.replace(/\n$/, "");
-                terminal.scrollTop = terminal.scrollHeight;
+                output.innerHTML += "<div>" + str + "</div>";
+                setTimeout(() => {
+                    output.scrollTop = output.scrollHeight;
+                }, 0);
             }
-            function putln(str) {
-                put(str + "\n");
-                historyIndex = 0;
-                history[historyIndex] = "";
-            }
-            history.unshift(...["", "ls -l", "cd /home/user", "echo 'Hello, World!'"]);
+            history.unshift(...["ls -l", "cd /home/user", "echo 'Hello, World!'"]);
             printHistory();
         </script>
     </body>

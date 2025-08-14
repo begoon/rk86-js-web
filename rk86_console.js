@@ -644,11 +644,6 @@ export class Console {
         });
 
         this.term.onData((data) => {
-            // console.log(
-            //     "onData",
-            //     data.length,
-            //     data.split("").map((c) => c.charCodeAt(0))
-            // );
             this.press(data);
         });
 
