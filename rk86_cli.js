@@ -3,7 +3,13 @@ import { hex16 } from "./hex.js";
 import { i8080_opcode } from "./i8080_disasm.js";
 import { saveAs } from "./saver.js";
 
-export function parseNumber(str, default_value = undefined) {
+/**
+ * @param {string} input
+ * @param {number=} default_value
+ * @returns {number}
+ */
+export function parseNumber(input, default_value = undefined) {
+    let str = input;
     if (typeof str !== "string" || str.length === 0) return default_value !== undefined ? default_value : NaN;
     str = str.trim();
     if (str.startsWith("$")) str = "0x" + str.slice(1);
@@ -54,6 +60,9 @@ export default class CLI {
             4: { type: "exec", address: 0xfca5, active: "no", count: 7, hits: 0 },
         };
 
+        /**
+         * @type {{[command: string]: [function, string]}}
+         */
         this.commands = {
             d: [this.dump_cmd, "dump memory / d [start_address[, number_of_bytes]]"],
             dd: [this.download_cmd, "download memory / dd [start_address=0 [, number_of_bytes=0x8000]]"],
@@ -77,6 +86,14 @@ export default class CLI {
             h: [this.history_cmd, "предыдущие команды / h"],
             "?": [this.help_cmd, "this help / ?"],
         };
+    }
+
+    help_cmd(args) {
+        const commands = this.commands;
+        for (let cmd of Object.keys(commands)) {
+            const [handler, description] = commands[cmd];
+            this.put("%s - %s\n".format(cmd.padEnd(2, " "), description));
+        }
     }
 
     dump_cmd(args) {
@@ -116,13 +133,13 @@ export default class CLI {
         const filename = "rk86-memory-%04X-%04X-%d.bin".format(
             this.download_cmd_snapshot_address,
             this.download_cmd_snapshot_length,
-            this.download_cmd_filename_count
+            this.download_cmd_filename_count,
         );
 
         console.log(
             `download ${hex16(this.download_cmd_snapshot_address)}:${hex16(
-                this.download_cmd_snapshot_length
-            )} -> ${filename}`
+                this.download_cmd_snapshot_length,
+            )} -> ${filename}`,
         );
 
         const { memory } = this.machine;
@@ -132,9 +149,17 @@ export default class CLI {
         saveAs(blob, filename);
     }
 
-    disasm_print(addr, nb_instr, current_addr) {
+    /**
+     * @param {number} address
+     * @param {number} nb_instr
+     * @param {number} current_addr
+     * @returns {number}
+     */
+    disasm_print(address, nb_instr, current_addr) {
+        let addr = address;
+        let n = nb_instr;
         const { memory } = this.machine;
-        while (nb_instr-- > 0) {
+        while (n-- > 0) {
             let binary = [];
             for (let i = 0; i < 3; ++i) binary.push(memory.read_raw(addr + i));
             const instr = i8080_opcode(...binary);
@@ -170,8 +195,8 @@ export default class CLI {
                 cpu.hl(),
                 cpu.de(),
                 cpu.bc(),
-                cpu.sp
-            )
+                cpu.sp,
+            ),
         );
         this.term.writeln("");
 
@@ -520,19 +545,14 @@ export default class CLI {
         this.term.writeln("\nКлавиши вверх/вниз для навигации по истории команд.");
     }
 
-    help_cmd(args) {
-        for (var cmd in this.commands) {
-            this.term.writeln("%s - %s".format(cmd, this.commands[cmd][1]));
-        }
-    }
-
+    /** @param {string} str */
     put(str) {
         this.machine.ui.terminal.put(str);
     }
 
-    /** @param {string} line */
-    run(line) {
-        line = line.trim();
+    /** @param {string} cmd */
+    run(cmd) {
+        let line = cmd.trim();
         if (line.length == 0) return;
 
         const argv = line.split(/\s+/);

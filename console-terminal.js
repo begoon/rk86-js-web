@@ -59,7 +59,7 @@ class ConsoleTerminal extends HTMLElement {
         this.HISTORY_SIZE = 100;
 
         this.$output = this.shadowRoot.getElementById("output");
-        // /** @type {!HTMLInputElement} */
+        /** @type {!HTMLInputElement} */
         this.$input = /** @type {!HTMLInputElement} */ (this.shadowRoot.getElementById("input"));
         this.pin = this.$input;
         this.$history = this.shadowRoot.getElementById("history");
@@ -150,7 +150,8 @@ class ConsoleTerminal extends HTMLElement {
     put(str) {
         if (!this.$output) throw new Error("$output not found");
 
-        this.$output.innerHTML += `<div>${str}</div>`;
+        const html = str.replaceAll(" ", "&nbsp;");
+        this.$output.innerHTML += `<div>${html}</div>`;
         setTimeout(() => {
             if (!this.$output) throw new Error("$output not found");
             this.$output.scrollTop = this.$output.scrollHeight;

@@ -17,8 +17,12 @@ SoundPlayer.prototype.play = function (freq, volume, wave) {
     return this;
 };
 
+/**
+ * @param {number} when
+ * @returns
+ */
 SoundPlayer.prototype.stop = function (when) {
-    if (!when) when = 0.05;
-    this.oscillator.stop(this.audioCtx.currentTime + when);
+    const offset = when || 0.05;
+    this.oscillator.stop(this.audioCtx.currentTime + offset);
     return this;
 };

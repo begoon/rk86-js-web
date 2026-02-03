@@ -109,17 +109,29 @@ export function I8080(machine) {
         return r != 6 ? this.regs[r] : this.memory_read_byte(this.hl());
     };
 
-    this.set_reg = (r, w8) => {
-        w8 &= 0xff;
-        if (r != 6) this.regs[r] = w8;
-        else this.memory_write_byte(this.hl(), w8);
+    /**
+     * @param {number} r
+     * @param {number} value
+     */
+    this.set_reg = (r, value) => {
+        const v8 = value & 0xff;
+        if (r != 6) this.regs[r] = v8;
+        else this.memory_write_byte(this.hl(), v8);
     };
 
-    // r - 00 (bc), 01 (de), 10 (hl), 11 (sp)
+    /**
+     * @param {number} r
+     * @returns {number}
+     */
     this.rp = (r) => {
+        // r - 00 (bc), 01 (de), 10 (hl), 11 (sp)
         return r != 6 ? (this.regs[r] << 8) | this.regs[r + 1] : this.sp;
     };
 
+    /**
+     * @param {number} r
+     * @param {number} w16
+     */
     this.set_rp = (r, w16) => {
         if (r != 6) {
             this.set_reg(r, w16 >> 8);
@@ -176,6 +188,9 @@ export function I8080(machine) {
         return f;
     };
 
+    /**
+     * @param {number} f
+     */
     this.retrieve_flags = (f) => {
         this.sf = f & F_NEG ? 1 : 0;
         this.zf = f & F_ZERO ? 1 : 0;

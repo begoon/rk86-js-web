@@ -72,14 +72,15 @@ export const file_ext = (filename) => {
 
 /**
  * @param {string} name
- * @param {number[]} image
+ * @param {number[]} input
  * @returns {File}
  */
-export const parse_rk86_binary = (name, image) => {
+export const parse_rk86_binary = (name, input) => {
     /** @type {File} */
     let file = {};
     file.name = name.split("/").slice(-1)[0];
 
+    let image = input;
     if (is_hex_file(image)) {
         const text = to_text(image);
         image = convert_hex_to_binary(text);

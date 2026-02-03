@@ -22,7 +22,14 @@ class I8080DisasmPanel {
         return i8080_opcode(opcode, byte2, byte3);
     }
 
-    renderCode(addr, lines) {
+    /**
+     * @param {number} address
+     * @param {number} lines
+     * @returns {string}
+     */
+    renderCode(address, lines) {
+        let addr = address;
+
         const output = [];
         for (let i = 0; i < lines; i++) {
             const instr = this.disasm(addr);
@@ -43,6 +50,11 @@ class I8080DisasmPanel {
             line += `<span style='color: ${color};'>${instr.cmd}</span>`;
             line += "&nbsp;".repeat(5 - instr.cmd.length);
 
+            /**
+             * @param {string | undefined} action
+             * @param {number} addr
+             * @returns {string}
+             */
             const format_argument = (action, addr) => {
                 if (!action) return `<span>${addr}</span>`;
                 return (
@@ -69,13 +81,27 @@ class I8080DisasmPanel {
         return output.join("<br />");
     }
 
+    /**
+     * @param {number} addr
+     * @param {number} lines
+     */
     #code(addr, lines) {
-        document.getElementById("disasm_code").innerHTML = this.renderCode(addr, lines);
+        const element = document.getElementById("disasm_code");
+        if (!element) throw new Error("disasm_code element not found");
+        element.innerHTML = this.renderCode(addr, lines);
     }
 
-    renderDump(addr, lines) {
+    /**
+     * @param {number} address
+     * @param {number} lines
+     * @returns {string}
+     */
+    renderDump(address, lines) {
         const output = [];
-        while (lines--) {
+
+        let addr = address;
+        let n = lines;
+        while (n--) {
             let line = hex16(addr) + ": ";
             for (let i = 0; i < DATA_WIDTH; ++i) {
                 line += hex8(this.memory.read(addr + i)) + " ";
@@ -91,8 +117,14 @@ class I8080DisasmPanel {
         return output.join("<br />");
     }
 
+    /**
+     * @param {number} addr
+     * @param {number} lines
+     */
     #dump(addr, lines) {
-        document.getElementById("disasm_data").innerHTML = this.renderDump(addr, lines);
+        const element = document.getElementById("disasm_data");
+        if (!element) throw new Error("disasm_data element not found");
+        element.innerHTML = this.renderDump(addr, lines);
     }
 
     form_go_code() {
@@ -118,9 +150,16 @@ class I8080DisasmPanel {
         this.form_go_code();
     }
 
-    #code_shift(addr, nb_lines) {
-        if (nb_lines < 0) {
-            while (nb_lines++ < 0) {
+    /**
+     * @param {number} address
+     * @param {number} lines
+     * @returns {number}
+     */
+    #code_shift(address, lines) {
+        let addr = address;
+        let n = lines;
+        if (n < 0) {
+            while (n++ < 0) {
                 let i;
                 for (i = 3; i > 0; --i) {
                     const descr = this.disasm(this.wrap(addr - i));
@@ -130,7 +169,7 @@ class I8080DisasmPanel {
                 addr = this.wrap(addr - i);
             }
         } else {
-            while (nb_lines-- > 0) {
+            while (n-- > 0) {
                 const descr = this.disasm(addr);
                 addr = this.wrap(addr + descr.length);
             }
@@ -140,8 +179,16 @@ class I8080DisasmPanel {
     }
 
     form_go_data() {
-        const addr = parseInt("0x" + document.getElementById("disasm_data_address").value);
-        const nb_lines = parseInt(document.getElementById("disasm_data_nb_lines").value);
+        const disasm_data_address = /** @type {!HTMLInputElement} */ (document.getElementById("disasm_data_address"));
+        if (!disasm_data_address) throw new Error("disasm_data_address element not found");
+
+        const addr = parseInt("0x" + disasm_data_address.value);
+
+        const disasm_data_nb_lines = /** @type {!HTMLInputElement} */ (document.getElementById("disasm_data_nb_lines"));
+        if (!disasm_data_nb_lines) throw new Error("disasm_data_nb_lines element not found");
+
+        const nb_lines = parseInt(disasm_data_nb_lines.value);
+
         this.#dump(addr, nb_lines);
     }
 

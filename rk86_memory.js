@@ -5,6 +5,16 @@ export class Memory {
     constructor(machine) {
         this.machine = machine;
 
+        /**
+         * @type {number[]}
+         */
+        this.buf = [];
+
+        /**
+         * @type {function(number): void}
+         */
+        this.update_ruslat = () => {};
+
         this.init();
         this.invalidate_access_variables();
     }
@@ -35,6 +45,11 @@ export class Memory {
         for (let i = 0; i < 0x8000; ++i) this.buf[i] = 0;
     }
 
+    /**
+     * @param {number} from
+     * @param {number} sz
+     * @returns {number[]}
+     */
     snapshot(from, sz) {
         return this.buf.slice(from, from + sz);
     }
@@ -68,6 +83,32 @@ export class Memory {
         };
     }
 
+    /**
+     * @typedef {Object} Snapshot
+     * @property {string} vg75_c001_00_cmd
+     * @property {string} video_screen_size_x_buf
+     * @property {string} video_screen_size_y_buf
+     * @property {string} vg75_c001_80_cmd
+     * @property {string} cursor_x_buf
+     * @property {string} cursor_y_buf
+     * @property {string} vg75_c001_60_cmd
+     * @property {string} ik57_e008_80_cmd
+     * @property {string} tape_8002_as_output
+     * @property {string} video_memory_base_buf
+     * @property {string} video_memory_size_buf
+     * @property {string} video_memory_base
+     * @property {string} video_memory_size
+     * @property {string} video_screen_size_x
+     * @property {string} video_screen_size_y
+     * @property {string} video_screen_cursor_x
+     * @property {string} video_screen_cursor_y
+     * @property {string} last_access_address
+     * @property {string} last_access_operation
+     * @property {string} memory
+     */
+    /**
+     * @param {Snapshot} snapshot
+     */
     import = (snapshot) => {
         const h = fromHex;
         this.vg75_c001_00_cmd = h(snapshot.vg75_c001_00_cmd);
@@ -101,12 +142,21 @@ export class Memory {
         return 0x10000;
     }
 
-    read_raw(addr) {
-        return this.buf[addr & 0xffff] & 0xff;
+    /**
+     * @param {number} address
+     * @returns {number}
+     */
+    read_raw(address) {
+        const addr = address & 0xffff;
+        return this.buf[addr] & 0xff;
     }
 
-    read(addr) {
-        addr &= 0xffff;
+    /**
+     * @param {number} address
+     * @returns {number}
+     */
+    read(address) {
+        const addr = address & 0xffff;
         this.last_access_address = addr;
         this.last_access_operation = "read";
 
@@ -135,17 +185,26 @@ export class Memory {
             }
             return 0x00;
         }
-
         return this.buf[addr];
     }
 
-    write_raw(addr, byte) {
-        this.buf[addr & 0xffff] = byte & 0xff;
+    /**
+     * @param {number} address
+     * @param {number} value8
+     */
+    write_raw(address, value8) {
+        const addr = address & 0xffff;
+        const byte = value8 & 0xff;
+        this.buf[addr] = byte;
     }
 
-    write = (addr, byte) => {
-        addr &= 0xffff;
-        byte &= 0xff;
+    /**
+     * @param {number} address
+     * @param {number} value8
+     */
+    write = (address, value8) => {
+        const addr = address & 0xffff;
+        const byte = value8 & 0xff;
 
         this.last_access_address = addr;
         this.last_access_operation = "write";
@@ -272,14 +331,23 @@ export class Memory {
         }
     };
 
+    /**
+     * @param {number} bit
+     */
     tape_write_bit(bit) {
         this.machine.tape.write_bit(bit);
     }
 
+    /**
+     * @param {number} value
+     */
     set_ruslat(value) {
         if (this.update_ruslat) this.update_ruslat(value);
     }
 
+    /**
+     * @param {import('./rk86_file_parser.js').File} file
+     */
     load_file(file) {
         for (let i = file.start; i <= file.end; ++i) {
             this.write_raw(i, file.image[i - file.start]);

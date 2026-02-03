@@ -1,3 +1,7 @@
+/**
+ * @param {number[]} v
+ * @returns {number}
+ */
 export function rk86_check_sum(v) {
     let sum = 0;
     let j = 0;

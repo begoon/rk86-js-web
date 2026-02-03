@@ -2,5 +2,8 @@
     "dependencies": {
         "@types/bun": "^1.2.17"
     },
-    "type": "module"
+    "type": "module",
+    "devDependencies": {
+        "eslint": "^9.39.2"
+    }
 }

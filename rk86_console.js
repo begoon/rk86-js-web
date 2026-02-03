@@ -5,7 +5,13 @@ import { hex16 } from "./hex.js";
 import { i8080_opcode } from "./i8080_disasm.js";
 import { saveAs } from "./saver.js";
 
-export function parseNumber(str, default_value = undefined) {
+/**
+ * @param {string} input
+ * @param {number=} default_value
+ * @returns {number}
+ */
+export function parseNumber(input, default_value = undefined) {
+    let str = input;
     if (typeof str !== "string" || str.length === 0) return default_value !== undefined ? default_value : NaN;
     str = str.trim();
     if (str.startsWith("$")) str = "0x" + str.slice(1);
@@ -86,6 +92,13 @@ export class Console {
         };
     }
 
+    help_cmd(args) {
+        for (let cmd of Object.keys(this.commands)) {
+            // this.term.writeln("%s - %s".format(cmd, this.commands[cmd][1]));
+            this.term.writeln(`${cmd} - ${this.commands[cmd][1]}`);
+        }
+    }
+
     dump_cmd(args) {
         let from = parseNumber(args[0], this.dump_cmd_last_address);
         let sz = parseNumber(args[1], this.dump_cmd_last_length);
@@ -123,13 +136,13 @@ export class Console {
         const filename = "rk86-memory-%04X-%04X-%d.bin".format(
             this.download_cmd_snapshot_address,
             this.download_cmd_snapshot_length,
-            this.download_cmd_filename_count
+            this.download_cmd_filename_count,
         );
 
         console.log(
             `download ${hex16(this.download_cmd_snapshot_address)}:${hex16(
-                this.download_cmd_snapshot_length
-            )} -> ${filename}`
+                this.download_cmd_snapshot_length,
+            )} -> ${filename}`,
         );
 
         const { memory } = this.machine;
@@ -139,9 +152,17 @@ export class Console {
         saveAs(blob, filename);
     }
 
-    disasm_print(addr, nb_instr, current_addr) {
+    /**
+     * @param {number} address
+     * @param {number} nb_instr
+     * @param {number=} current_addr
+     * @returns {number}
+     */
+    disasm_print(address, nb_instr, current_addr) {
+        let addr = address;
+        let n = nb_instr;
         const { memory } = this.machine;
-        while (nb_instr-- > 0) {
+        while (n-- > 0) {
             let binary = [];
             for (let i = 0; i < 3; ++i) binary.push(memory.read_raw(addr + i));
             const instr = i8080_opcode(...binary);
@@ -177,8 +198,8 @@ export class Console {
                 cpu.hl(),
                 cpu.de(),
                 cpu.bc(),
-                cpu.sp
-            )
+                cpu.sp,
+            ),
         );
         this.term.writeln("");
 
@@ -527,14 +548,9 @@ export class Console {
         this.term.writeln("\nКлавиши вверх/вниз для навигации по истории команд.");
     }
 
-    help_cmd(args) {
-        for (var cmd in this.commands) {
-            this.term.writeln("%s - %s".format(cmd, this.commands[cmd][1]));
-        }
-    }
-
-    command(line) {
-        line = line.trim();
+    /** @param {string} cmd */
+    command(cmd) {
+        let line = cmd.trim();
         if (line.length == 0) return;
 
         const argv = line.split(/\s+/);
@@ -553,7 +569,9 @@ export class Console {
         this.term.prompt();
     }
 
-    press(data) {
+    /** @param {string} input */
+    press(input) {
+        let data = input;
         const strokes = [
             [
                 "\r",
