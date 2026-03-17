@@ -1,3 +1,9 @@
+declare global {
+    interface String {
+        format(...args: unknown[]): string;
+    }
+}
+
 String.prototype.format = function () {
     var i = 0,
         a,
@@ -8,10 +14,10 @@ String.prototype.format = function () {
         c,
         x;
     while (f) {
-        if ((m = /^[^\x25]+/.exec(f))) o.push(m[0]);
-        else if ((m = /^\x25{2}/.exec(f))) o.push("%");
-        else if ((m = /^\x25(?:(\d+)\$)?(\+)?(0|'[^$])?(-)?(\d+)?(?:\.(\d+))?([b-fosuxX])/.exec(f))) {
-            if ((a = arguments[m[1] || i++]) == null || a == undefined) throw "Format: Too few arguments";
+        if ((m = /^[^\x25]+/.exec(f.toString()))) o.push(m[0]);
+        else if ((m = /^\x25{2}/.exec(f.toString()))) o.push("%");
+        else if ((m = /^\x25(?:(\d+)\$)?(\+)?(0|'[^$])?(-)?(\d+)?(?:\.(\d+))?([b-fosuxX])/.exec(f.toString()))) {
+            if ((a = arguments[Number(m[1]) || i++]) == null || a == undefined) throw "Format: Too few arguments";
             if (/[^s]/.test(m[7]) && typeof a != "number") throw "Expecting number but found " + typeof a;
             switch (m[7]) {
                 case "b":
@@ -27,13 +33,13 @@ String.prototype.format = function () {
                     a = m[6] ? a.toExponential(m[6]) : a.toExponential();
                     break;
                 case "f":
-                    a = m[6] ? parseFloat(a).toFixed(m[6]) : parseFloat(a);
+                    a = m[6] ? parseFloat(a).toFixed(Number(m[6])) : parseFloat(a);
                     break;
                 case "o":
                     a = a.toString(8);
                     break;
                 case "s":
-                    a = (a = String(a)) && m[6] ? a.substring(0, m[6]) : a;
+                    a = (a = String(a)) && m[6] ? a.substring(0, Number(m[6])) : a;
                     break;
                 case "u":
                     a = Math.abs(a);
@@ -47,7 +53,7 @@ String.prototype.format = function () {
             }
             a = /[def]/.test(m[7]) && m[2] && a > 0 ? "+" + a : a;
             c = m[3] ? (m[3] == "0" ? "0" : m[3].charAt(1)) : " ";
-            x = m[5] - String(a).length;
+            x = Number(m[5]) - String(a).length;
             p = m[5] ? c.repeat(x) : "";
             o.push(m[4] ? a + p : p + a);
         } else throw "Huh ?!";

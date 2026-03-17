@@ -10,13 +10,13 @@ import { rk86_snapshot, rk86_snapshot_restore } from "../rk86_snapshot.ts";
 const document = {};
 const window = { setTimeout() {} };
 
-globalThis.Image = function () {};
+globalThis.Image = function () {} as any;
 
 const version = "0.0.0";
 
 const snapshot_standard = __dirname + "/snapshot.json";
 
-let machine = undefined;
+let machine: Machine | undefined = undefined;
 
 function create_cpu() {
     const cpu = new I8080({});
@@ -97,17 +97,21 @@ beforeEach(() => {
         screen: create_screen(),
         ui: {},
     };
+    if (!machine) throw new Error("machine is not defined");
     machine.screen.machine = machine;
 });
 
-const normalize = (v) => JSON.stringify(JSON.parse(v), null, 4);
+const normalize = (v: string) => JSON.stringify(JSON.parse(v), null, 4);
 
+import { Machine } from "../rk86_machine.ts";
 import EXPECTED_SNAPSHOT from "./test_snapshot.json" assert { type: "json" };
 
 test("export", () => {
     expect.assertions(4172);
 
     Date.prototype.toISOString = () => "created";
+
+    if (!machine) throw new Error("machine is not defined");
 
     const snapshot = normalize(rk86_snapshot(machine, version));
     const expected_snapshot = JSON.stringify(EXPECTED_SNAPSHOT, null, 4);
@@ -138,6 +142,8 @@ test.each([
     expect.assertions(51);
 
     console.log = (str) => expect(str).toBe("установлен размер экрана: 3 x 4");
+
+    if (!machine) throw new Error("machine is not defined");
 
     machine.ui.update_screen_geometry = (width, height) => expect([width, height]).toEqual([3, 4]);
     machine.ui.resize_canvas = (width, height) => expect([width, height]).toEqual([18, 80]);
@@ -188,7 +194,7 @@ test.each([
     expect(machine.screen.scale_y).toBe(2);
     expect(machine.screen.width).toBe(3);
     expect(machine.screen.height).toBe(4);
-    expect(machine.screen.cursor_state).toBe(1);
+    expect(machine.screen.cursor_state).toBe(true);
     expect(machine.screen.cursor_x).toBe(6);
     expect(machine.screen.cursor_y).toBe(7);
     expect(machine.screen.video_memory_base).toBe(0x1111);

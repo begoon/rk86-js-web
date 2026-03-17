@@ -8,14 +8,14 @@ build:
 lint:
     bunx eslint *.ts
 
-run:
-    bun run --watch main.ts
+run: build
+    bun run --watch server.ts
 
 test-watch:
     bun test --watch --only-failures
 
 test-js:
-    bun test
+    bun test --only-failures 
 
 test-i8080:
     bun i8080_ex.ts

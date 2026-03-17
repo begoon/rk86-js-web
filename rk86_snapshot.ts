@@ -1,6 +1,7 @@
 import { hex16 } from "./hex.ts";
+import { Machine } from "./rk86_machine.ts";
 
-export function rk86_snapshot(machine: any, version: string): string {
+export function rk86_snapshot(machine: Machine, version: string): string {
     const { screen, cpu, keyboard, memory } = machine;
 
     const h16 = (n: number) => "0x" + hex16(n);
@@ -22,7 +23,11 @@ export function rk86_snapshot(machine: any, version: string): string {
     return JSON.stringify(snapshot, null, 4);
 }
 
-export function rk86_snapshot_restore(snapshot: any, machine: any, keys_injector?: (commands: any[]) => void): boolean {
+export function rk86_snapshot_restore(
+    snapshot: any,
+    machine: Machine,
+    keys_injector?: (commands: any[]) => void,
+): boolean {
     try {
         const json = typeof snapshot === "string" ? JSON.parse(snapshot) : snapshot;
         if (json.id != "rk86") return false;
@@ -35,7 +40,7 @@ export function rk86_snapshot_restore(snapshot: any, machine: any, keys_injector
         memory.import(json.memory);
 
         screen.apply_import();
-        screen.init_cache();
+        screen.init_cache(screen.video_memory_size);
 
         if (keys_injector && json.boot?.keyboard) keys_injector(json.boot?.keyboard);
         return true;

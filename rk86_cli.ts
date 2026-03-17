@@ -350,7 +350,7 @@ export default class CLI {
         // "stop_after_next_instruction" to 1 and then use this as the
         // condition to stop before the next instruction.
         if (this.stop_after_next_instruction == 1) {
-            this.pause_cmd(this);
+            this.pause_cmd();
             this.stop_after_next_instruction = -1;
             return;
         }
@@ -383,14 +383,14 @@ export default class CLI {
             // process "exec" breakpoints only before the current instruction.
             const { cpu } = this.machine;
             if (when == "before" && breakpoint.address == cpu.pc && breakpoint.type == "exec") {
-                breakpoint_hit(breakpoint, i);
+                breakpoint_hit(breakpoint, Number(i));
             }
             // process "read/write" breakpoints only after the current instruction.
             if (when == "after") {
                 const address = cpu.memory.last_access_address;
                 const operation = cpu.memory.last_access_operation;
                 if (breakpoint.address == address && breakpoint.type == operation) {
-                    breakpoint_hit(breakpoint, i);
+                    breakpoint_hit(breakpoint, Number(i));
                 }
             }
         }
@@ -427,7 +427,7 @@ export default class CLI {
     list_breakpoints_cmd(args: string[]): void {
         for (let [i, b] of Object.entries(this.breaks)) {
             if (b == null) continue;
-            this.print_breakpoint(i, b);
+            this.print_breakpoint(Number(i), b);
         }
     }
 

@@ -23,7 +23,7 @@ export class Screen {
     light_pen_x: number;
     light_pen_y: number;
     light_pen_active: number;
-    ctx: CanvasRenderingContext2D;
+    ctx!: CanvasRenderingContext2D;
 
     constructor(machine: any) {
         this.machine = machine;
@@ -83,7 +83,7 @@ export class Screen {
         this.scale_y = h(snapshot.scale_y);
         this.width = h(snapshot.width);
         this.height = h(snapshot.height);
-        this.cursor_state = h(snapshot.cursor_state);
+        this.cursor_state = h(snapshot.cursor_state) ? true : false;
         this.cursor_x = h(snapshot.cursor_x);
         this.cursor_y = h(snapshot.cursor_y);
         this.video_memory_base = h(snapshot.video_memory_base);
@@ -108,7 +108,7 @@ export class Screen {
         this.machine.ui.canvas.onmousedown = () => (this.light_pen_active = 1);
     }
 
-    cache: (number | boolean)[] = [];
+    cache: boolean[] = [];
 
     init_cache(sz: number): void {
         for (let i = 0; i < sz; ++i) this.cache[i] = true;
@@ -124,7 +124,7 @@ export class Screen {
             x * this.char_width * this.scale_x,
             y * (this.char_height + this.char_height_gap) * this.scale_y,
             this.char_width * this.scale_x,
-            this.char_height * this.scale_y
+            this.char_height * this.scale_y,
         );
     }
 
@@ -136,7 +136,7 @@ export class Screen {
                     this.last_cursor_x * this.char_width * this.scale_x,
                     cy(this.last_cursor_y),
                     this.cursor_width * this.scale_x,
-                    this.cursor_height * this.scale_y
+                    this.cursor_height * this.scale_y,
                 );
             this.last_cursor_state = this.cursor_state;
             this.last_cursor_x = x;
@@ -158,8 +158,6 @@ export class Screen {
     }
 
     disable_smoothing() {
-        this.ctx.mozImageSmoothingEnabled = false;
-        this.ctx.webkitImageSmoothingEnabled = false;
         this.ctx.imageSmoothingEnabled = false;
     }
 
@@ -203,7 +201,7 @@ export class Screen {
         console.log(
             `установлена видеопамять с адреса`,
             `${hex16(this.video_memory_base)}`,
-            `размером ${hex16(this.video_memory_size)}`
+            `размером ${hex16(this.video_memory_size)}`,
         );
         this.last_video_memory_base = this.video_memory_base;
     }

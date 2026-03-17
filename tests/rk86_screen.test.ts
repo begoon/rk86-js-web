@@ -2,9 +2,9 @@ import { beforeEach, expect, test } from "bun:test";
 
 import { Screen } from "../rk86_screen.ts";
 
-globalThis.Image = function () {};
+globalThis.Image = function () {} as any;
 
-let screen = undefined;
+let screen: Screen | undefined = undefined;
 
 beforeEach(() => {
     screen = new Screen({});
@@ -12,7 +12,7 @@ beforeEach(() => {
     screen.scale_y = 2;
     screen.width = 3;
     screen.height = 4;
-    screen.cursor_state = 1;
+    screen.cursor_state = true;
     screen.cursor_x = 6;
     screen.cursor_y = 7;
     screen.video_memory_base = 0x1111;
@@ -23,6 +23,8 @@ beforeEach(() => {
 });
 
 test("screen export", () => {
+    if (!screen) throw new Error("screen is not defined");
+
     const exported = screen.export();
 
     expect(exported.scale_x).toBe(1);
@@ -40,6 +42,8 @@ test("screen export", () => {
 });
 
 test("screen import", () => {
+    if (!screen) throw new Error("screen is not defined");
+
     const imported = new Screen({});
     imported.import(screen.export());
 

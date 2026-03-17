@@ -8,6 +8,8 @@
     "esModuleInterop": true,
     "moduleResolution": "node",
     "maxNodeModuleJsDepth": 10,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "module": "esnext",
     "target": "es2023",
     "strict": true,

@@ -9,8 +9,8 @@ import { Memory } from "../rk86_memory.ts";
 import { CPI } from "./data/cpi_data.ts";
 import { DAA } from "./data/daa_data.ts";
 
-let memory;
-let cpu;
+let memory: Memory;
+let cpu: I8080;
 
 beforeEach(() => {
     memory = new Memory(undefined);
@@ -44,8 +44,8 @@ test("instruction", () => {
 });
 
 test("daa", () => {
-    cpu.set_cf = 1;
-    cpu.set_hf = 1;
+    cpu.cf = 1;
+    cpu.hf = 1;
     cpu.set_a(0xaa);
 
     cpu.set_rp(0, 0xaabb); // bc
@@ -65,8 +65,8 @@ test("daa", () => {
     expect(cpu.a()).toBe(0x10);
 
     // NOTE: The flags need refactoring to either booleans or numbers but not both.
-    expect(cpu.sf).toBe(false);
-    expect(cpu.zf).toBe(false);
+    expect(cpu.sf).toBe(0);
+    expect(cpu.zf).toBe(0);
     expect(cpu.hf).toBe(1);
     expect(cpu.pf).toBe(0);
     expect(cpu.cf).toBe(1);
@@ -84,8 +84,8 @@ test("daa/*", () => {
     for (let cf = 0; cf < 2; ++cf) {
         for (let hf = 0; hf < 2; ++hf) {
             for (let a = 0; a < 256; ++a) {
-                cpu.set_cf = cf;
-                cpu.set_hf = hf;
+                cpu.cf = cf;
+                cpu.hf = hf;
                 cpu.set_a(a);
 
                 cpu.execute(0x27); // DAA

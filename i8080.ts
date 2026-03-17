@@ -1,4 +1,4 @@
-// Intel 8080 (KR580VM80A) microprocessor core model in JavaScript
+// Intel 8080 (KR580VM80A) microprocessor core model
 //
 // Copyright (C) 2012-2025 Alexander Demin <alexander@demin.ws>
 //
@@ -33,101 +33,46 @@
 
 import { fromHex, hex16, hex8 } from "./hex.ts";
 
-export function I8080(this: any, machine: any) {
-    const { memory, io } = machine;
+interface I8080Machine {
+    memory: {
+        read(addr: number): number;
+        write(addr: number, value: number): void;
+    };
+    io: {
+        input(port: number): number;
+        output(port: number, value: number): void;
+        interrupt(iff: number): void;
+    };
+}
 
-    this.memory = memory;
-    this.io = io;
+export class I8080 {
+    memory: I8080Machine["memory"];
+    io: I8080Machine["io"];
 
-    this.sp = 0;
-    this.pc = 0;
-    this.iff = 0;
+    sp: number = 0;
+    pc: number = 0;
+    iff: number = 0;
 
-    this.sf = 0;
-    this.pf = 0;
-    this.hf = 0;
-    this.zf = 0;
-    this.cf = 0;
+    pf: number = 0;
+    hf: number = 0;
+    sf: number = 0;
+    zf: number = 0;
+    cf: number = 0;
 
     // Registers: b, c, d, e, h, l, m, a
     //            0  1  2  3  4  5  6  7
-    this.regs = [0, 0, 0, 0, 0, 0, 0, 0];
+    regs = [0, 0, 0, 0, 0, 0, 0, 0];
 
-    this.export = () => {
-        const h8 = (n) => "0x" + hex8(n);
-        const h16 = (n) => "0x" + hex16(n);
-        return {
-            a: h8(this.a()),
-            sf: this.sf ? 1 : 0,
-            zf: this.zf ? 1 : 0,
-            hf: this.hf ? 1 : 0,
-            pf: this.pf ? 1 : 0,
-            cf: this.cf ? 1 : 0,
-            bc: h16(this.bc()),
-            de: h16(this.de()),
-            hl: h16(this.hl()),
-            sp: h16(this.sp),
-            pc: h16(this.pc),
-            iff: this.iff ? 1 : 0,
-        };
-    };
+    private static readonly F_CARRY = 0x01;
+    private static readonly F_UN1 = 0x02;
+    private static readonly F_PARITY = 0x04;
+    private static readonly F_UN3 = 0x08;
+    private static readonly F_HCARRY = 0x10;
+    private static readonly F_UN5 = 0x20;
+    private static readonly F_ZERO = 0x40;
+    private static readonly F_NEG = 0x80;
 
-    this.import = (snapshot) => {
-        const h = fromHex;
-        this.set_a(h(snapshot.a));
-        this.sf = snapshot.sf;
-        this.zf = snapshot.zf;
-        this.hf = snapshot.hf;
-        this.pf = snapshot.pf;
-        this.cf = snapshot.cf;
-        this.set_rp(0, h(snapshot.bc));
-        this.set_rp(2, h(snapshot.de));
-        this.set_rp(4, h(snapshot.hl));
-        this.set_rp(6, h(snapshot.sp));
-        this.pc = h(snapshot.pc);
-        this.iff = h(snapshot.iff);
-    };
-
-    this.memory_read_byte = (addr) => {
-        return this.memory.read(addr & 0xffff) & 0xff;
-    };
-
-    this.memory_write_byte = (addr, w8) => {
-        this.memory.write(addr & 0xffff, w8 & 0xff);
-    };
-
-    this.memory_read_word = (addr) => {
-        return (this.memory_read_byte(addr + 1) << 8) | this.memory_read_byte(addr);
-    };
-
-    this.memory_write_word = (addr, w16) => {
-        this.memory_write_byte(addr + 1, w16 >> 8);
-        this.memory_write_byte(addr, w16 & 0xff);
-    };
-
-    this.reg = (r) => {
-        return r != 6 ? this.regs[r] : this.memory_read_byte(this.hl());
-    };
-
-    this.set_reg = (r, value) => {
-        const v8 = value & 0xff;
-        if (r != 6) this.regs[r] = v8;
-        else this.memory_write_byte(this.hl(), v8);
-    };
-
-    this.rp = (r) => {
-        // r - 00 (bc), 01 (de), 10 (hl), 11 (sp)
-        return r != 6 ? (this.regs[r] << 8) | this.regs[r + 1] : this.sp;
-    };
-
-    this.set_rp = (r, w16) => {
-        if (r != 6) {
-            this.set_reg(r, w16 >> 8);
-            this.set_reg(r + 1, w16 & 0xff);
-        } else this.sp = w16;
-    };
-
-    this.parity_table = [
+    private parity_table = [
         [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1],
         [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0],
         [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0],
@@ -146,201 +91,335 @@ export function I8080(this: any, machine: any) {
         [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1],
     ].flat();
 
-    this.half_carry_table = [0, 0, 1, 0, 1, 0, 1, 1];
-    this.sub_half_carry_table = [0, 1, 1, 1, 0, 0, 0, 1];
+    private half_carry_table = [0, 0, 1, 0, 1, 0, 1, 1];
+    private sub_half_carry_table = [0, 1, 1, 1, 0, 0, 0, 1];
 
-    const F_CARRY = 0x01;
-    const F_UN1 = 0x02;
-    const F_PARITY = 0x04;
-    const F_UN3 = 0x08;
-    const F_HCARRY = 0x10;
-    const F_UN5 = 0x20;
-    const F_ZERO = 0x40;
-    const F_NEG = 0x80;
+    constructor(machine: I8080Machine) {
+        this.memory = machine.memory;
+        this.io = machine.io;
+    }
 
-    this.store_flags = () => {
+    export(): Record<string, string | number> {
+        const h8 = (n: number) => "0x" + hex8(n);
+        const h16 = (n: number) => "0x" + hex16(n);
+        return {
+            a: h8(this.a()),
+            sf: this.sf ? 1 : 0,
+            zf: this.zf ? 1 : 0,
+            hf: this.hf ? 1 : 0,
+            pf: this.pf ? 1 : 0,
+            cf: this.cf ? 1 : 0,
+            bc: h16(this.bc()),
+            de: h16(this.de()),
+            hl: h16(this.hl()),
+            sp: h16(this.sp),
+            pc: h16(this.pc),
+            iff: this.iff ? 1 : 0,
+        };
+    }
+
+    import(snapshot: any) {
+        const h = fromHex;
+        this.set_a(h(snapshot.a));
+        this.sf = snapshot.sf;
+        this.zf = snapshot.zf;
+        this.hf = snapshot.hf;
+        this.pf = snapshot.pf;
+        this.cf = snapshot.cf;
+        this.set_rp(0, h(snapshot.bc));
+        this.set_rp(2, h(snapshot.de));
+        this.set_rp(4, h(snapshot.hl));
+        this.set_rp(6, h(snapshot.sp));
+        this.pc = h(snapshot.pc);
+        this.iff = h(snapshot.iff);
+    }
+
+    memory_read_byte(addr: number): number {
+        return this.memory.read(addr & 0xffff) & 0xff;
+    }
+
+    memory_write_byte(addr: number, w8: number) {
+        this.memory.write(addr & 0xffff, w8 & 0xff);
+    }
+
+    memory_read_word(addr: number): number {
+        return (this.memory_read_byte(addr + 1) << 8) | this.memory_read_byte(addr);
+    }
+
+    memory_write_word(addr: number, w16: number) {
+        this.memory_write_byte(addr + 1, w16 >> 8);
+        this.memory_write_byte(addr, w16 & 0xff);
+    }
+
+    reg(r: number): number {
+        return r != 6 ? this.regs[r] : this.memory_read_byte(this.hl());
+    }
+
+    set_reg(r: number, value: number) {
+        const v8 = value & 0xff;
+        if (r != 6) this.regs[r] = v8;
+        else this.memory_write_byte(this.hl(), v8);
+    }
+
+    rp(r: number): number {
+        // r - 00 (bc), 01 (de), 10 (hl), 11 (sp)
+        return r != 6 ? (this.regs[r] << 8) | this.regs[r + 1] : this.sp;
+    }
+
+    set_rp(r: number, w16: number) {
+        if (r != 6) {
+            this.set_reg(r, w16 >> 8);
+            this.set_reg(r + 1, w16 & 0xff);
+        } else this.sp = w16;
+    }
+
+    store_flags(): number {
         let f = 0;
-        if (this.sf) f |= F_NEG;
-        else f &= ~F_NEG;
-        if (this.zf) f |= F_ZERO;
-        else f &= ~F_ZERO;
-        if (this.hf) f |= F_HCARRY;
-        else f &= ~F_HCARRY;
-        if (this.pf) f |= F_PARITY;
-        else f &= ~F_PARITY;
-        if (this.cf) f |= F_CARRY;
-        else f &= ~F_CARRY;
-        f |= F_UN1; // UN1_FLAG is always 1.
-        f &= ~F_UN3; // UN3_FLAG is always 0.
-        f &= ~F_UN5; // UN5_FLAG is always 0.
+        if (this.sf) f |= I8080.F_NEG;
+        else f &= ~I8080.F_NEG;
+        if (this.zf) f |= I8080.F_ZERO;
+        else f &= ~I8080.F_ZERO;
+        if (this.hf) f |= I8080.F_HCARRY;
+        else f &= ~I8080.F_HCARRY;
+        if (this.pf) f |= I8080.F_PARITY;
+        else f &= ~I8080.F_PARITY;
+        if (this.cf) f |= I8080.F_CARRY;
+        else f &= ~I8080.F_CARRY;
+        f |= I8080.F_UN1; // UN1_FLAG is always 1.
+        f &= ~I8080.F_UN3; // UN3_FLAG is always 0.
+        f &= ~I8080.F_UN5; // UN5_FLAG is always 0.
         return f;
-    };
+    }
 
-    this.retrieve_flags = (f) => {
-        this.sf = f & F_NEG ? 1 : 0;
-        this.zf = f & F_ZERO ? 1 : 0;
-        this.hf = f & F_HCARRY ? 1 : 0;
-        this.pf = f & F_PARITY ? 1 : 0;
-        this.cf = f & F_CARRY ? 1 : 0;
-    };
+    retrieve_flags(f: number) {
+        this.sf = f & I8080.F_NEG ? 1 : 0;
+        this.zf = f & I8080.F_ZERO ? 1 : 0;
+        this.hf = f & I8080.F_HCARRY ? 1 : 0;
+        this.pf = f & I8080.F_PARITY ? 1 : 0;
+        this.cf = f & I8080.F_CARRY ? 1 : 0;
+    }
 
-    this.bc = () => this.rp(0);
-    this.de = () => this.rp(2);
-    this.hl = () => this.rp(4);
+    bc(): number {
+        return this.rp(0);
+    }
 
-    this.b = () => this.reg(0);
-    this.c = () => this.reg(1);
-    this.d = () => this.reg(2);
-    this.e = () => this.reg(3);
-    this.h = () => this.reg(4);
-    this.l = () => this.reg(5);
-    this.a = () => this.reg(7);
+    de(): number {
+        return this.rp(2);
+    }
 
-    this.set_b = (v) => this.set_reg(0, v);
-    this.set_c = (v) => this.set_reg(1, v);
-    this.set_d = (v) => this.set_reg(2, v);
-    this.set_e = (v) => this.set_reg(3, v);
-    this.set_h = (v) => this.set_reg(4, v);
-    this.set_l = (v) => this.set_reg(5, v);
-    this.set_a = (v) => this.set_reg(7, v);
+    hl(): number {
+        return this.rp(4);
+    }
 
-    this.next_pc_byte = () => {
+    b(): number {
+        return this.reg(0);
+    }
+
+    c(): number {
+        return this.reg(1);
+    }
+
+    d(): number {
+        return this.reg(2);
+    }
+
+    e(): number {
+        return this.reg(3);
+    }
+
+    h(): number {
+        return this.reg(4);
+    }
+
+    l(): number {
+        return this.reg(5);
+    }
+
+    a(): number {
+        return this.reg(7);
+    }
+
+    set_b(v: number) {
+        this.set_reg(0, v);
+    }
+
+    set_c(v: number) {
+        this.set_reg(1, v);
+    }
+
+    set_d(v: number) {
+        this.set_reg(2, v);
+    }
+
+    set_e(v: number) {
+        this.set_reg(3, v);
+    }
+
+    set_h(v: number) {
+        this.set_reg(4, v);
+    }
+
+    set_l(v: number) {
+        this.set_reg(5, v);
+    }
+
+    set_a(v: number) {
+        this.set_reg(7, v);
+    }
+
+    next_pc_byte(): number {
         const v = this.memory_read_byte(this.pc);
         this.pc = (this.pc + 1) & 0xffff;
         return v;
-    };
+    }
 
-    this.next_pc_word = () => this.next_pc_byte() | (this.next_pc_byte() << 8);
+    next_pc_word(): number {
+        return this.next_pc_byte() | (this.next_pc_byte() << 8);
+    }
 
-    this.inr = (r) => {
+    inr(r: number) {
         let v = this.reg(r);
         v = (v + 1) & 0xff;
         this.set_reg(r, v);
-        this.sf = (v & 0x80) != 0;
-        this.zf = v == 0;
-        this.hf = (v & 0x0f) == 0;
+        this.sf = (v & 0x80) != 0 ? 1 : 0;
+        this.zf = v == 0 ? 1 : 0;
+        this.hf = (v & 0x0f) == 0 ? 1 : 0;
         this.pf = this.parity_table[v];
-    };
+    }
 
-    this.dcr = (r) => {
+    dcr(r: number) {
         let v = this.reg(r);
         v = (v - 1) & 0xff;
         this.set_reg(r, v);
-        this.sf = (v & 0x80) != 0;
-        this.zf = v == 0;
-        this.hf = !((v & 0x0f) == 0x0f);
+        this.sf = (v & 0x80) != 0 ? 1 : 0;
+        this.zf = v == 0 ? 1 : 0;
+        this.hf = !((v & 0x0f) == 0x0f) ? 1 : 0;
         this.pf = this.parity_table[v];
-    };
+    }
 
-    this.add_im8 = (v, carry) => {
+    add_im8(v: number, carry: number) {
         let a = this.a();
         const w16 = a + v + carry;
         const index = ((a & 0x88) >> 1) | ((v & 0x88) >> 2) | ((w16 & 0x88) >> 3);
         a = w16 & 0xff;
-        this.sf = (a & 0x80) != 0;
-        this.zf = a == 0;
-        this.hf = this.half_carry_table[index & 0x7];
-        this.pf = this.parity_table[a];
-        this.cf = (w16 & 0x0100) != 0;
+        this.sf = (a & 0x80) != 0 ? 1 : 0;
+        this.zf = a == 0 ? 1 : 0;
+        this.hf = this.half_carry_table[index & 0x7] ? 1 : 0;
+        this.pf = this.parity_table[a] ? 1 : 0;
+        this.cf = (w16 & 0x0100) != 0 ? 1 : 0;
         this.set_a(a);
-    };
+    }
 
-    this.add = (r, carry) => this.add_im8(this.reg(r), carry);
+    add(r: number, carry: number) {
+        this.add_im8(this.reg(r), carry);
+    }
 
-    this.sub_im8 = (v, carry) => {
+    sub_im8(v: number, carry: number) {
         let a = this.a();
         const w16 = (a - v - carry) & 0xffff;
         const index = ((a & 0x88) >> 1) | ((v & 0x88) >> 2) | ((w16 & 0x88) >> 3);
         a = w16 & 0xff;
-        this.sf = (a & 0x80) != 0;
-        this.zf = a == 0;
-        this.hf = !this.sub_half_carry_table[index & 0x7];
-        this.pf = this.parity_table[a];
-        this.cf = (w16 & 0x0100) != 0;
+        this.sf = (a & 0x80) != 0 ? 1 : 0;
+        this.zf = a == 0 ? 1 : 0;
+        this.hf = !this.sub_half_carry_table[index & 0x7] ? 1 : 0;
+        this.pf = this.parity_table[a] ? 1 : 0;
+        this.cf = (w16 & 0x0100) != 0 ? 1 : 0;
         this.set_a(a);
-    };
+    }
 
-    this.sub = (r, carry) => this.sub_im8(this.reg(r), carry);
+    sub(r: number, carry: number) {
+        this.sub_im8(this.reg(r), carry);
+    }
 
-    this.cmp_im8 = (v) => {
+    cmp_im8(v: number) {
         const a = this.a();
         this.sub_im8(v, 0);
         this.set_a(a);
-    };
+    }
 
-    this.cmp = (r) => this.cmp_im8(this.reg(r));
+    cmp(r: number) {
+        this.cmp_im8(this.reg(r));
+    }
 
-    this.ana_im8 = (v) => {
+    ana_im8(v: number) {
         let a = this.a();
-        this.hf = ((a | v) & 0x08) != 0;
+        this.hf = ((a | v) & 0x08) != 0 ? 1 : 0;
         a &= v;
-        this.sf = (a & 0x80) != 0;
-        this.zf = a == 0;
-        this.pf = this.parity_table[a];
+        this.sf = (a & 0x80) != 0 ? 1 : 0;
+        this.zf = a == 0 ? 1 : 0;
+        this.pf = this.parity_table[a] ? 1 : 0;
         this.cf = 0;
         this.set_a(a);
-    };
+    }
 
-    this.ana = (r) => this.ana_im8(this.reg(r));
+    ana(r: number) {
+        this.ana_im8(this.reg(r));
+    }
 
-    this.xra_im8 = (v) => {
+    xra_im8(v: number) {
         let a = this.a();
         a ^= v;
-        this.sf = (a & 0x80) != 0;
-        this.zf = a == 0;
+        this.sf = (a & 0x80) != 0 ? 1 : 0;
+        this.zf = a == 0 ? 1 : 0;
         this.hf = 0;
         this.pf = this.parity_table[a];
         this.cf = 0;
         this.set_a(a);
-    };
+    }
 
-    this.xra = (r) => this.xra_im8(this.reg(r));
+    xra(r: number) {
+        this.xra_im8(this.reg(r));
+    }
 
-    this.ora_im8 = (v) => {
+    ora_im8(v: number) {
         let a = this.a();
         a |= v;
-        this.sf = (a & 0x80) != 0;
-        this.zf = a == 0;
+        this.sf = (a & 0x80) != 0 ? 1 : 0;
+        this.zf = a == 0 ? 1 : 0;
         this.hf = 0;
         this.pf = this.parity_table[a];
         this.cf = 0;
         this.set_a(a);
-    };
+    }
 
-    this.ora = (r) => this.ora_im8(this.reg(r));
+    ora(r: number) {
+        this.ora_im8(this.reg(r));
+    }
 
     // r - 0 (bc), 2 (de), 4 (hl), 6 (sp)
-    this.dad = (r) => {
+    dad(r: number) {
         const hl = this.hl() + this.rp(r);
-        this.cf = (hl & 0x10000) != 0;
+        this.cf = (hl & 0x10000) != 0 ? 1 : 0;
         this.set_h(hl >> 8);
         this.set_l(hl & 0xff);
-    };
+    }
 
-    this.call = (w16) => {
+    call(w16: number) {
         this.push(this.pc);
         this.pc = w16;
-    };
+    }
 
-    this.ret = () => (this.pc = this.pop());
+    ret(): number {
+        return (this.pc = this.pop());
+    }
 
-    this.pop = () => {
+    pop(): number {
         const v = this.memory_read_word(this.sp);
         this.sp = (this.sp + 2) & 0xffff;
         return v;
-    };
+    }
 
-    this.push = (v) => {
+    push(v: number) {
         this.sp = (this.sp - 2) & 0xffff;
         this.memory_write_word(this.sp, v);
-    };
+    }
 
-    this.rst = (addr) => {
+    rst(addr: number) {
         this.push(this.pc);
         this.pc = addr;
-    };
+    }
 
-    this.execute = (opcode) => {
+    execute(opcode: number): number {
         let cpu_cycles = -1;
 
         switch (opcode) {
@@ -351,7 +430,7 @@ export function I8080(this: any, machine: any) {
             // nop, 0x00, 00rrr000
             // r - 000(0) to 111(7)
             case 0x00: // nop
-            // Undocumented NOP.
+            // Undocumented NOP: 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38
             case 0x08: // nop
             case 0x10: // nop
             case 0x18: // nop
@@ -439,7 +518,7 @@ export function I8080(this: any, machine: any) {
             case 0x07: {
                 cpu_cycles = 4;
                 const a = this.a();
-                this.cf = (a & 0x80) != 0;
+                this.cf = (a & 0x80) != 0 ? 1 : 0;
                 this.set_a(((a << 1) & 0xff) | this.cf);
                 break;
             }
@@ -488,7 +567,7 @@ export function I8080(this: any, machine: any) {
             case 0x17: {
                 cpu_cycles = 4;
                 const w8 = this.cf;
-                this.cf = (this.a() & 0x80) != 0;
+                this.cf = (this.a() & 0x80) != 0 ? 1 : 0;
                 this.set_a((this.a() << 1) | w8);
                 break;
             }
@@ -559,7 +638,7 @@ export function I8080(this: any, machine: any) {
 
             case 0x3f: // cmc
                 cpu_cycles = 4;
-                this.cf = !this.cf;
+                this.cf = this.cf ? 0 : 1;
                 break;
 
             // mov, 0x40, 01dddsss
@@ -660,7 +739,7 @@ export function I8080(this: any, machine: any) {
             case 0x86: // add m
             case 0x87: // add a
 
-            // adc, 0x80, 10001rrr
+            // adc, 0x88, 10001rrr
             // rrr - b, c, d, e, h, l, m, a
             case 0x88: // adc b
             case 0x89: // adc c
@@ -688,7 +767,7 @@ export function I8080(this: any, machine: any) {
             case 0x96: // sub m
             case 0x97: // sub a
 
-            // sbb, 0x98, 10010rrr
+            // sbb, 0x98, 10011rrr
             // rrr - b, c, d, e, h, l, m, a
             case 0x98: // sbb b
             case 0x99: // sbb c
@@ -780,7 +859,7 @@ export function I8080(this: any, machine: any) {
             case 0xf8: {
                 const flags = [this.zf, this.cf, this.pf, this.sf];
                 const r = (opcode >> 4) & 0x03;
-                const direction = (opcode & 0x08) != 0;
+                const direction = (opcode & 0x08) != 0 ? 1 : 0;
                 cpu_cycles = 5;
                 if (flags[r] == direction) {
                     cpu_cycles = 11;
@@ -824,7 +903,7 @@ export function I8080(this: any, machine: any) {
                 cpu_cycles = 10;
                 const flags = [this.zf, this.cf, this.pf, this.sf];
                 const r = (opcode >> 4) & 0x03;
-                const direction = (opcode & 0x08) != 0;
+                const direction = (opcode & 0x08) != 0 ? 1 : 0;
                 const w16 = this.next_pc_word();
                 this.pc = flags[r] == direction ? w16 : this.pc;
                 break;
@@ -852,7 +931,7 @@ export function I8080(this: any, machine: any) {
             case 0xfc: {
                 const flags = [this.zf, this.cf, this.pf, this.sf];
                 const r = (opcode >> 4) & 0x03;
-                const direction = (opcode & 0x08) != 0;
+                const direction = (opcode & 0x08) != 0 ? 1 : 0;
                 const w16 = this.next_pc_word();
                 cpu_cycles = 11;
                 if (flags[r] == direction) {
@@ -889,7 +968,7 @@ export function I8080(this: any, machine: any) {
             case 0xdf: // rst 3
             case 0xe7: // rst 4
             case 0xef: // rst 5
-            case 0xf7: // rst 5
+            case 0xf7: // rst 6
             case 0xff: // rst 7
                 this.rst(opcode & 0x38);
                 cpu_cycles = 11;
@@ -978,7 +1057,7 @@ export function I8080(this: any, machine: any) {
             case 0xf3: // di
             case 0xfb: // ei
                 cpu_cycles = 4;
-                this.iff = (opcode & 0x08) != 0;
+                this.iff = (opcode & 0x08) != 0 ? 1 : 0;
                 this.io.interrupt(this.iff);
                 break;
 
@@ -998,9 +1077,13 @@ export function I8080(this: any, machine: any) {
                 break;
         }
         return cpu_cycles;
-    };
+    }
 
-    this.instruction = () => this.execute(this.next_pc_byte());
+    instruction(): number {
+        return this.execute(this.next_pc_byte());
+    }
 
-    this.jump = (addr) => (this.pc = addr & 0xffff);
+    jump(addr: number) {
+        this.pc = addr & 0xffff;
+    }
 }
