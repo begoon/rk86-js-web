@@ -27,6 +27,7 @@ class ConsoleTerminal extends HTMLElement {
                     width: 81ch;
                     display: block;
                     font-family: monospace;
+                    background-color: black;
                 }
                 #container {
                     display: grid;
