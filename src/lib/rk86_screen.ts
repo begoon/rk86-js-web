@@ -1,4 +1,4 @@
-import { fromHex, hex16 } from "./hex.ts";
+import { fromHex, hex16 } from "./hex.js";
 export class Screen {
     static #update_rate = 25;
 

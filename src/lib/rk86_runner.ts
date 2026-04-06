@@ -1,4 +1,4 @@
-import { Sound } from "./rk86_sound.ts";
+import { Sound } from "./rk86_sound.js";
 
 export class Runner {
     paused = false;
@@ -20,7 +20,7 @@ export class Runner {
         this.machine = machine;
         this.TICK_PER_MS = this.FREQ / 100;
 
-        this.machine.io.interrupt = this.interrupt;
+        this.machine.io.interrupt = (iff: number) => this.interrupt(iff);
         this.machine.cpu.jump(0xf800);
     }
 
@@ -34,13 +34,20 @@ export class Runner {
             const tone_ticks = this.total_ticks - this.last_iff_raise_ticks;
             const tone = this.FREQ / (tone_ticks * 2);
             const duration = 1 / tone;
+            console.log(`tone: ${tone.toFixed(2)} Hz | duration: ${duration.toFixed(3)} s`);
             this.sound?.play(tone, duration);
         }
         this.last_iff = iff;
     }
 
     init_sound(enabled: boolean) {
-        enabled && this.sound == null ? new Sound() : null;
+        if (enabled && this.sound == null) {
+            this.sound = new Sound();
+            console.log("звук включен");
+        } else if (!enabled) {
+            this.sound = null;
+            console.log("звук выключен");
+        }
     }
 
     execute() {
@@ -66,8 +73,8 @@ export class Runner {
                     this.tracer("after");
                     if (this.paused) break;
                 }
-                if (this.machine.ui.visualizer_visible) {
-                    this.machine.ui.visualizer.hit(this.machine.memory.read_raw(this.machine.cpu.pc));
+                if (this.machine.ui.visualizer_visible && this.machine.ui.on_visualizer_hit) {
+                    this.machine.ui.on_visualizer_hit(this.machine.memory.read_raw(this.machine.cpu.pc));
                 }
                 batch_instructions += 1;
             }
@@ -87,5 +94,10 @@ export class Runner {
 
     resume() {
         this.paused = false;
+    }
+
+    reset() {
+        this.machine.cpu.jump(0xf800);
+        this.machine.keyboard.reset();
     }
 }

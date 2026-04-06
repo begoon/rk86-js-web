@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import "../format.ts";
+import "../src/lib/format.js";
 
 test("plain text without format specifiers", () => {
     expect("hello".format()).toBe("hello");

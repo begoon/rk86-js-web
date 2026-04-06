@@ -1,6 +1,6 @@
-import { fromHex, hex16 } from "./hex.ts";
-import * as hexMap from "./hex_map.ts";
-import type { RK86File } from "./rk86_file_parser.ts";
+import { fromHex, hex16 } from "./hex.js";
+import * as hexMap from "./hex_map";
+import type { RK86File } from "./rk86_file_parser.js";
 
 interface MemorySnapshot {
     vg75_c001_00_cmd: number;

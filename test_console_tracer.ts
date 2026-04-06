@@ -1,4 +1,4 @@
-import { hex8 } from "./hex.ts";
+import { hex8 } from "./src/lib/hex.js";
 
 export class Tracer {
     line: string = "";

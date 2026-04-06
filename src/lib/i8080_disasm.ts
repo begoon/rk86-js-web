@@ -1,4 +1,4 @@
-import { hex16, hex8 } from "./hex.ts";
+import { hex16, hex8 } from "./hex.js";
 
 export interface I8080Instruction {
     cmd: string;

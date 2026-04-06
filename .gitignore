@@ -2,3 +2,5 @@ node_modules
 files.js
 .claude/settings.local.json
 index.html
+.svelte-kit
+build

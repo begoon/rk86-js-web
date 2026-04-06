@@ -1,5 +1,5 @@
-import { hex16 } from "./hex.ts";
-import { Machine } from "./rk86_machine.ts";
+import { hex16 } from "./hex.js";
+import { type Machine } from "./rk86_machine.js";
 
 export function rk86_snapshot(machine: Machine, version: string): string {
     const { screen, cpu, keyboard, memory } = machine;

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { rk86_check_sum } from "../rk86_check_sum.ts";
+import { rk86_check_sum } from "../src/lib/rk86_check_sum.js";
 
 test("extract_rk86_word", () => {
     expect(rk86_check_sum([])).toBe(0x0000);

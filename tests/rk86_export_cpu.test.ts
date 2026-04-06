@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from "bun:test";
 
-import { I8080 } from "../i8080.ts";
+import { I8080 } from "../src/lib/i8080.ts";
 
 let cpu: I8080;
 

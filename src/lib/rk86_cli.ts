@@ -1,8 +1,8 @@
-import "./format.ts";
-import { hex16 } from "./hex.ts";
-import { i8080_opcode } from "./i8080_disasm.ts";
-import { rk86_check_sum } from "./rk86_check_sum.ts";
-import { saveAs } from "./saver.ts";
+import "./format.js";
+import { hex16 } from "./hex.js";
+import { i8080_opcode } from "./i8080_disasm.js";
+import { rk86_check_sum } from "./rk86_check_sum.js";
+import { saveAs } from "./saver";
 
 interface Breakpoint {
     type: string;
@@ -13,30 +13,7 @@ interface Breakpoint {
     temporary?: string;
 }
 
-const $ = (id: string): HTMLElement => {
-    const element = document.getElementById(id);
-    if (!element) throw new Error(`element "${id}" not found`);
-    return element;
-};
-
-export function parseNumber(input: string | undefined, default_value?: number): number {
-    let str = input;
-    if (typeof str !== "string" || str.length === 0) {
-        if (default_value === undefined) return NaN;
-        return default_value;
-    }
-    const value = parse(str);
-    return isNaN(value) && default_value !== undefined ? default_value : value;
-}
-
-function parse(v: string): number {
-    let str = v.trim().toLowerCase();
-    if (str.startsWith("$")) str = "0x" + str.slice(1);
-    else if (str.startsWith("0x")) str = str;
-    else if (str.endsWith("h")) str = "0x" + str.slice(0, -1);
-    else if (str.search(/[a-f]/i) >= 0) str = "0x" + str;
-    return parseInt(str);
-}
+import { parseNumber } from "./parse_number.js";
 
 export default class CLI {
     static from_rk86_table = [
@@ -89,27 +66,27 @@ export default class CLI {
         };
 
         this.commands = {
-            d: [this.dump_cmd, "dump memory / d [start_address[, number_of_bytes]]"],
-            dd: [this.download_cmd, "download memory / dd [start_address=0 [, number_of_bytes=0x8000]]"],
-            i: [this.cpu_cmd, "CPU iformation / i"],
-            z: [this.disasm_cmd, "disassemble / z [start_address [, number_of_instructions]]"],
-            w: [this.write_byte_cmd, "write bytes / w start_address byte1, [byte2, [byte3]...]"],
-            ww: [this.write_word_cmd, "write words / ww start_address word1, [word2, [word3]...]"],
-            wc: [this.write_char_cmd, "write characters / ww start_address string"],
-            t: [this.debug_cmd, "debug control / t [on|off]"],
-            p: [this.pause_cmd, "pause CPU / p"],
-            r: [this.resume_cmd, "resume CPU / r"],
-            g: [this.go_cmd, "go to an address / g 0xf86c"],
-            gr: [this.reset_cmd, "reset / gr"],
-            gs: [this.restart_cmd, "restart / gs"],
-            s: [this.single_step_cmd, "single step"],
-            so: [this.step_over_cmd, "step over"],
-            bl: [this.list_breakpoints_cmd, "list breakpoints / bl"],
-            be: [this.edit_breakpoints_cmd, "create/edit breakpoints / be 1 type:exec address:0xf86c count:3"],
-            bd: [this.delete_breakpoints_cmd, "delete breakpoints / bd 1"],
-            cs: [this.check_sum_cmd, "calculate checksum / cs start_address, end_address"],
+            d: [this.dump_cmd, "дамп памяти / d [адрес[, кол-во_байт]]"],
+            dd: [this.download_cmd, "скачать память / dd [адрес=0 [, кол-во_байт=0x8000]]"],
+            i: [this.cpu_cmd, "состояние процессора / i"],
+            z: [this.disasm_cmd, "дизассемблирование / z [адрес [, кол-во_инструкций]]"],
+            w: [this.write_byte_cmd, "записать байты / w адрес байт1, [байт2, [байт3]...]"],
+            ww: [this.write_word_cmd, "записать слова / ww адрес слово1, [слово2, [слово3]...]"],
+            wc: [this.write_char_cmd, "записать символы / wc адрес строка"],
+            t: [this.debug_cmd, "управление отладкой / t [on|off]"],
+            p: [this.pause_cmd, "остановить процессор / p"],
+            r: [this.resume_cmd, "продолжить выполнение / r"],
+            g: [this.go_cmd, "перейти по адресу / g 0xf86c"],
+            gr: [this.reset_cmd, "сброс / gr"],
+            gs: [this.restart_cmd, "перезапуск / gs"],
+            s: [this.single_step_cmd, "шаг / s"],
+            so: [this.step_over_cmd, "шаг через / so"],
+            bl: [this.list_breakpoints_cmd, "список точек останова / bl"],
+            be: [this.edit_breakpoints_cmd, "создать/изменить точку останова / be 1 type:exec address:0xf86c count:3"],
+            bd: [this.delete_breakpoints_cmd, "удалить точку останова / bd 1"],
+            cs: [this.check_sum_cmd, "контрольная сумма / cs адрес_начала, адрес_конца"],
             h: [this.history_cmd, "предыдущие команды / h"],
-            "?": [this.help_cmd, "this help / ?"],
+            "?": [this.help_cmd, "справка / ?"],
         };
     }
 
@@ -475,22 +452,22 @@ export default class CLI {
 
     pause_cmd() {
         if (this.machine.runner.paused) return;
-        $("pause").click();
+        this.machine.pause(true);
         this.cpu_cmd();
         this.put("остановлено на %04X".format(this.machine.cpu.pc));
     }
 
     resume_cmd() {
         if (!this.machine.runner.paused) return;
-        $("pause").click();
+        this.machine.pause(false);
     }
 
     reset_cmd() {
-        $("reset").click();
+        this.machine.reset();
     }
 
     restart_cmd() {
-        $("restart").click();
+        this.machine.restart();
     }
 
     go_cmd(args: string[]): void {
@@ -528,21 +505,21 @@ export default class CLI {
     }
 
     check_sum_cmd(args: string[]): void {
-        if (args.length < 3) return this.bad_command("cs start end - вычислить контрольную сумму");
+        if (args.length < 2) return this.bad_command("cs start end - вычислить контрольную сумму");
 
-        const from = parseInt(args[1]);
+        const from = parseInt(args[0]);
         if (isNaN(from)) return this.bad_command("start - начальный адрес диапазона");
 
-        const to = parseInt(args[2]);
+        const to = parseInt(args[1]);
         if (isNaN(to)) return this.bad_command("end - конечный адрес диапазона");
 
-        const image = this.machine.runner.cpu.memory.snapshot(from, to + 1 - from);
+        const image = this.machine.memory.snapshot(from, to + 1 - from);
         const checksum = rk86_check_sum(image);
         this.put("%04X-%04X: %04X".format(from, to, checksum));
     }
 
     history_cmd() {
-        const history = ($("terminal_panel") as any).history || [];
+        const history = this.machine.ui.terminal.history || [];
         const limit = 10;
         if (history.length === 0) return;
         const from = Math.max(0, history.length - limit);

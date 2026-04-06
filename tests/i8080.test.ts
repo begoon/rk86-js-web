@@ -2,9 +2,9 @@ import { env } from "node:process";
 
 import { beforeEach, expect, test } from "bun:test";
 
-import { hex8 } from "../hex.ts";
-import { I8080 } from "../i8080.ts";
-import { Memory } from "../rk86_memory.ts";
+import { I8080 } from "../src/lib/i8080.ts";
+import { hex8 } from "../src/lib/hex.js";
+import { Memory } from "../src/lib/rk86_memory.js";
 
 import { CPI } from "./data/cpi_data.ts";
 import { DAA } from "./data/daa_data.ts";

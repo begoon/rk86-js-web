@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { type SequenceAction, convert_keyboard_sequence } from "../rk86_keyboard_injector.ts";
+import { type SequenceAction, convert_keyboard_sequence } from "../src/lib/rk86_keyboard_injector.js";
 
 const sequence: SequenceAction[] = [
     { keys: [68, 188, 70, 70, 70], duration: 100, action: "press" },

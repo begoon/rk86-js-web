@@ -1,8 +1,8 @@
-import { fromHex, hex8 } from "./hex.ts";
+import { fromHex, hex8 } from "./hex.js";
 
 export class Keyboard {
-    state: number[];
-    modifiers: number;
+    state!: number[];
+    modifiers!: number;
 
     keydown = (code: string) => {
         // SHIFT

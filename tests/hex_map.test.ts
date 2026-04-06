@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { create, parse } from "../hex_map.ts";
+import { create, parse } from "../src/lib/hex_map.ts";
 
 test("create", () => {
     expect(create([0])).toEqual({ ":0000": "00" });

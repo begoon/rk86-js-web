@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 
-import { hex16, hexArray } from "../hex.ts";
-import { Memory } from "../rk86_memory.ts";
+import { hex16, hexArray } from "../src/lib/hex.js";
+import { Memory } from "../src/lib/rk86_memory.js";
 
 let memory!: Memory;
 

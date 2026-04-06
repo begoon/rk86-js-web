@@ -1,4 +1,4 @@
-import { SoundPlayer } from "./SoundPlayer.ts";
+import { SoundPlayer } from "./SoundPlayer.js";
 
 export class Sound {
     volume = 0.05;
@@ -7,8 +7,9 @@ export class Sound {
     player: SoundPlayer;
 
     constructor() {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        this.player = new SoundPlayer(new AudioContext());
+        const ctx = new AudioContext();
+        ctx.resume();
+        this.player = new SoundPlayer(ctx);
     }
 
     set_stop_timer(duration: number) {

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import CLI, { parseNumber } from "../rk86_cli.ts";
-import { Memory } from "../rk86_memory.ts";
+import CLI from "../src/lib/rk86_cli.ts";
+import { parseNumber } from "../src/lib/parse_number.ts";
+import { Memory } from "../src/lib/rk86_memory.js";
 
 test("parseNumber", () => {
     expect(parseNumber("")).toBe(NaN);

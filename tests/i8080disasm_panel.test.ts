@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 
-import I8080DisasmPanel from "../i8080disasm_panel.ts";
-import { Memory } from "../rk86_memory.ts";
+import I8080DisasmPanel from "../src/lib/i8080disasm_panel.ts";
+import { Memory } from "../src/lib/rk86_memory.js";
 
 let memory;
 let disasm: I8080DisasmPanel;

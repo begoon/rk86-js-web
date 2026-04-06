@@ -1,11 +1,11 @@
+import type { UI } from "../../main.js";
+import type { IO } from "../../test_machine.js";
 import type { I8080 } from "./i8080.ts";
-import type { UI } from "./main.ts";
 import type { Keyboard } from "./rk86_keyboard.ts";
-import type { Memory } from "./rk86_memory.ts";
-import type { Runner } from "./rk86_runner.ts";
-import type { Screen } from "./rk86_screen.ts";
-import type { Tape } from "./rk86_tape.ts";
-import type { IO } from "./test_machine.ts";
+import type { Memory } from "./rk86_memory.js";
+import type { Runner } from "./rk86_runner.js";
+import type { Screen } from "./rk86_screen.js";
+import type { Tape } from "./rk86_tape.js";
 
 export interface Machine {
     ui: UI;
@@ -17,6 +17,10 @@ export interface Machine {
     screen: Screen;
     tape: Tape;
     font: string;
+
+    reset: () => void;
+    restart: () => void;
+    pause: (paused: boolean) => void;
 }
 
 export interface MachineBuilder {

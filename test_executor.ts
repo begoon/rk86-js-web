@@ -1,4 +1,4 @@
-import { I8080 } from "./i8080.ts";
+import { I8080 } from "./src/lib/i8080.ts";
 import { Tracer } from "./test_console_tracer.ts";
 import { load_file } from "./test_load_file.ts";
 import { IO, Memory } from "./test_machine.ts";
