@@ -124,7 +124,7 @@ document.querySelector("radio86-emulator").addEventListener("ready", (e) => {
 
 ### Демо
 
-Файл `demo.html` содержит пример с четырьмя независимыми эмуляторами.
+Файл [`demo.html`](https://rk86.ru/beta/demo.html) содержит пример с четырьмя независимыми эмуляторами.
 
 ![Демо веб-компонента](web-component.png)
 
