@@ -3,6 +3,7 @@ import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import * as child_process from "node:child_process";
 
 child_process.execSync("bun src/lib/build_catalog.ts", { stdio: "inherit" });
+child_process.execSync("bun build src/lib/radio86-emulator.ts --outfile static/radio86-emulator.js --minify", { stdio: "inherit" });
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {

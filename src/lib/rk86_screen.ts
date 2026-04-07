@@ -131,13 +131,15 @@ export class Screen {
     draw_cursor(x: number, y: number, visible: boolean): void {
         const cy = (y: number) => (y * (this.char_height + this.char_height_gap) + this.char_height) * this.scale_y;
         if (this.last_cursor_x !== x || this.last_cursor_y !== y) {
-            if (this.last_cursor_state)
-                this.ctx.clearRect(
+            if (this.last_cursor_state) {
+                this.ctx.fillStyle = "#000000";
+                this.ctx.fillRect(
                     this.last_cursor_x * this.char_width * this.scale_x,
                     cy(this.last_cursor_y),
                     this.cursor_width * this.scale_x,
                     this.cursor_height * this.scale_y,
                 );
+            }
             this.last_cursor_state = this.cursor_state;
             this.last_cursor_x = x;
             this.last_cursor_y = y;
@@ -178,6 +180,7 @@ export class Screen {
         this.machine.ui.resize_canvas(canvas_width, canvas_height);
 
         this.disable_smoothing();
+        this.ctx.fillStyle = "#000000";
         this.ctx.fillRect(0, 0, canvas_width, canvas_height);
 
         if (this.last_width === this.width && this.last_height === this.height) return;
