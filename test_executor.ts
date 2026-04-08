@@ -26,6 +26,8 @@ export async function executor(
     cpu.jump(0x100);
 
     let success = false;
+    let instrCount = 0;
+    const timeoutMs = timeout * 1000;
     while (1) {
         const pc = cpu.pc;
         if (memory.read(pc) == 0x76) {
@@ -49,7 +51,7 @@ export async function executor(
             success = tracer.success;
             break;
         }
-        if (performance.now() - start > timeout * 1000) {
+        if (++instrCount % 100_000 === 0 && performance.now() - start > timeoutMs) {
             tracer.writeln("timeout exceeded");
             tracer.flush();
             success = false;

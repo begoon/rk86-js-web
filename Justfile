@@ -8,9 +8,6 @@ build:
 lint:
     bunx eslint *.ts
 
-run:
-    bun run --watch server.ts
-
 test-watch:
     bun test --watch --only-failures
 

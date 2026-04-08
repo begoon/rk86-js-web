@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
+import process from "node:process";
 
 function hex(n: number, width: number): string {
     return n.toString(16).toUpperCase().padStart(width, "0");
@@ -13,7 +14,7 @@ function dump_file(name: string): void {
 
     assert.ok(name.includes("."), `Name '${name}'`);
 
-    const contents = fs.readFileSync("test/" + name);
+    const contents = fs.readFileSync("static/files/" + name);
     const sz = contents.length;
 
     const ext = path.extname(name);
@@ -32,7 +33,7 @@ function dump_file(name: string): void {
             end = start + sz - 1;
             entry = start;
         } else {
-            end = sz;
+            end = sz - 1;
             start = 0;
             entry = 0;
         }
@@ -45,7 +46,7 @@ function dump_file(name: string): void {
         n += 2;
 
         // end address
-        start = (contents[n] << 8) | contents[n + 1];
+        end = (contents[n] << 8) | contents[n + 1];
         n += 2;
 
         entry = start;
@@ -63,7 +64,7 @@ function dump_file(name: string): void {
         assert.ok(n < sz, `n = ${n}, sz = ${sz}, start = ${start}, end = ${end}`);
         let c = contents[n];
         n += 1;
-        line += hex(c, 2);
+        line += "\\x" + hex(c, 2);
         i += 1;
         if (i >= 32) {
             i = 0;
@@ -73,21 +74,41 @@ function dump_file(name: string): void {
         ++start;
     }
     if (i > 0) line += '"';
-    line += "\n};\n";
+    line += "\n};\n\n";
     console.log(line);
 }
 
-function main(): void {
-    console.log("export function preloaded_files() {");
-    console.log("const files = [];\n");
+function preloaded_files(): void {
+    console.log("function preloaded_files() {");
+    console.log("files = [];\n");
 
-    for (let file of fs.readdirSync("test").toSorted()) {
+    for (const file of fs.readdirSync("static/files")) {
         if (!file) continue;
         dump_file(file);
     }
 
     console.log("return files;");
+    console.log("}\n");
+}
+
+function tape_catalog(): void {
+    console.log("export function tape_catalog() {");
+    console.log("  return [");
+    for (const file of fs.readdirSync("static/files").toSorted()) {
+        if (!file) continue;
+        console.log(`    "${file}",`);
+    }
+    console.log("  ];");
     console.log("}");
+}
+
+function main(): void {
+    if (process.argv[2] === "preloaded") return preloaded_files();
+
+    const filename = process.argv[3];
+    if (process.argv[2] === "dump" && filename) return dump_file(filename);
+
+    if (process.argv[2] === "tape") return tape_catalog();
 }
 
 main();

@@ -1,7 +1,7 @@
 // Generates src/lib/catalog_data.ts and src/lib/tape_catalog.ts from static/files + static/catalog
 // Source of truth: static/files — every file must have a corresponding static/catalog/<name>/info.md
 
-import { readdirSync, readFileSync, existsSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 const root = join(import.meta.dir, "../..");
