@@ -80,6 +80,9 @@
     }
 
     function toggleDebugger() {
+        if (debuggerVisible && canvas && canvasPlaceholder) {
+            canvasPlaceholder.appendChild(canvas);
+        }
         debuggerVisible = !debuggerVisible;
         if (debuggerVisible) setTimeout(() => terminal?.focus(), 0);
     }
@@ -138,6 +141,15 @@
     let visualizerVisible = $state(false);
     let debuggerVisible = $state(false);
     let canvasFocused = $state(false);
+    let lastDataAddr = $state("0000");
+    let debuggerCanvasSlot = $state<HTMLDivElement>();
+    let canvasPlaceholder = $state<HTMLDivElement>();
+
+    $effect(() => {
+        if (canvas && debuggerVisible && debuggerCanvasSlot) {
+            debuggerCanvasSlot.appendChild(canvas);
+        }
+    });
 
     let terminal = $state<Terminal>();
 
@@ -154,6 +166,15 @@
         clearTimeout(soundImageTimeout);
         soundImageTimeout = setTimeout(() => (soundImageVisible = false), 2000);
     }
+
+    let mainElement = $state<HTMLElement>();
+    $effect(() => {
+        if (mainElement) {
+            mainElement.querySelectorAll("button.icon, a.icon").forEach((el) => {
+                (el as HTMLElement).tabIndex = -1;
+            });
+        }
+    });
 </script>
 
 <svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} />
@@ -161,6 +182,7 @@
 
 <!-- svelte-ignore a11y_mouse_events_have_key_events -->
 <main
+    bind:this={mainElement}
     onmouseover={(e) => {
         const button = (e.target as HTMLElement).closest("[data-text]") as HTMLElement | null;
         hintText = button?.dataset.text ?? "";
@@ -309,26 +331,25 @@
                 class:canvas-focused={canvasFocused}
                 onclick={() => (canvasFocused = true)}
                 data-text={canvasFocused ? "" : "Кликнуть для ввода"}
-            >
-                <canvas bind:this={canvas}></canvas>
-            </div>
+                bind:this={debuggerCanvasSlot}
+            ></div>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="debugger-disasm" onclick={() => (canvasFocused = false)}>
-                <Disassembler memory={machine.memory} pc={() => machine!.cpu.pc} onclose={toggleDebugger} embedded />
+                <Disassembler memory={machine.memory} pc={() => machine!.cpu.pc} initialDataAddr={lastDataAddr} ondatachange={(addr) => lastDataAddr = addr} />
             </div>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="debugger-terminal" onclick={() => { canvasFocused = false; terminal?.focus(); }}>
-                <Terminal bind:this={terminal} onrun={(cmd) => cli?.run(cmd)} onclose={toggleDebugger} embedded />
+                <Terminal bind:this={terminal} onrun={(cmd) => cli?.run(cmd)} />
             </div>
         </div>
-    {:else}
-        <canvas bind:this={canvas} style={assemblerVisible ? "display: none" : ""}></canvas>
-        {#if assemblerVisible}
-            <iframe id="assembler_panel" src="i8080asm.html" title="Ассемблер"></iframe>
-        {/if}
+    {:else if assemblerVisible}
+        <iframe id="assembler_panel" src="i8080asm.html" title="Ассемблер"></iframe>
     {/if}
+    <div bind:this={canvasPlaceholder} class="canvas-placeholder" style={debuggerVisible || assemblerVisible ? "display: none" : ""}>
+        <canvas bind:this={canvas}></canvas>
+    </div>
     {#if visualizerVisible}
         <Visualizer onclose={toggleVisualizer} />
     {/if}
@@ -389,6 +410,7 @@
     onclick={(e) => {
         if (e.target === e.currentTarget) shortcutsDialog?.close();
     }}
+    onclose={() => (document.activeElement as HTMLElement)?.blur()}
 >
     <div>
         <h1 style="font-weight: bold">CMD-k + ...</h1>
@@ -453,6 +475,7 @@
     onclick={(e) => {
         if (e.target === e.currentTarget) catalogDialog?.close();
     }}
+    onclose={() => (document.activeElement as HTMLElement)?.blur()}
 >
     <CatalogSelector
         onselect={(name) => {
@@ -533,9 +556,21 @@
         cursor: pointer;
         border: 2px solid transparent;
     }
-    .debugger-canvas-wrap canvas {
-        display: block;
-        image-rendering: pixelated;
+    .canvas-placeholder {
+        flex: 1;
+        min-height: 0;
+        min-width: 0;
+        max-width: 100%;
+        max-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .canvas-placeholder canvas {
+        width: 100%;
+        height: 100%;
+        aspect-ratio: 78 / 50;
+        object-fit: contain;
     }
     .debugger-canvas-wrap:hover,
     .canvas-focused {
@@ -552,17 +587,6 @@
         grid-column: 1;
         overflow: auto;
         border-top: 1px solid #333;
-    }
-    canvas {
-        flex: 1;
-        min-height: 0;
-        min-width: 0;
-        max-width: 100%;
-        max-height: 100%;
-        aspect-ratio: 78 / 50;
-        object-fit: contain;
-        display: block;
-        align-self: center;
     }
     .dimmed {
         opacity: 0.6;

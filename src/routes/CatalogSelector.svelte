@@ -6,6 +6,10 @@
     const files = tape_catalog();
     let selectedIndex = $state(0);
     let filter = $state("");
+    let filterInput = $state<HTMLInputElement>();
+
+    import { onMount } from "svelte";
+    onMount(() => filterInput?.focus());
 
     const filtered = $derived(
         filter ? files.filter((f) => f.toLowerCase().includes(filter.toLowerCase())) : files,
@@ -67,7 +71,7 @@
         type="text"
         placeholder="Фильтр..."
         bind:value={filter}
-        autofocus
+        bind:this={filterInput}
     />
     <div class="grid" bind:this={grid} role="listbox">
         {#each filtered as name, i}

@@ -1,32 +1,11 @@
 <script lang="ts">
-    let { onrun, onclose, embedded = false }: { onrun: (cmd: string) => void; onclose: () => void; embedded?: boolean } = $props();
+    let { onrun }: { onrun: (cmd: string) => void } = $props();
 
-    let panel = $state<HTMLDivElement>();
     let output = $state<HTMLDivElement>();
     let input = $state<HTMLInputElement>();
-    let dragging = $state(false);
-    let dragOffset = { x: 0, y: 0 };
 
     let history: string[] = [];
     let historyIndex = 0;
-
-    function onMouseDown(e: MouseEvent) {
-        if ((e.target as HTMLElement).closest("button, input")) return;
-        dragging = true;
-        const rect = panel!.getBoundingClientRect();
-        dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        e.preventDefault();
-    }
-    function onMouseMove(e: MouseEvent) {
-        if (!dragging || !panel) return;
-        panel.style.left = `${e.clientX - dragOffset.x}px`;
-        panel.style.top = `${e.clientY - dragOffset.y}px`;
-        panel.style.right = "auto";
-        panel.style.bottom = "auto";
-    }
-    function onMouseUp() {
-        dragging = false;
-    }
 
     function handleKeydown(e: KeyboardEvent) {
         e.stopPropagation();
@@ -89,16 +68,7 @@
     });
 </script>
 
-<svelte:window on:mousemove={embedded ? undefined : onMouseMove} on:mouseup={embedded ? undefined : onMouseUp} />
-
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class={embedded ? "terminal-embedded" : "terminal-panel"} bind:this={panel} onmousedown={embedded ? undefined : onMouseDown}>
-    {#if !embedded}
-        <div class="titlebar">
-            <span>Консоль</span>
-            <button class="close-btn" type="button" onclick={onclose}>&times;</button>
-        </div>
-    {/if}
+<div class="terminal">
     <div class="terminal-body">
         <div class="output" bind:this={output}></div>
         <!-- svelte-ignore a11y_autofocus -->
@@ -115,42 +85,11 @@
 </div>
 
 <style>
-    .terminal-panel {
-        position: fixed;
-        right: 10px;
-        bottom: 40px;
-        width: 81ch;
-        z-index: 1000;
-        border: 1px solid green;
-        cursor: move;
-        user-select: none;
-    }
-    .terminal-embedded {
+    .terminal {
         width: 100%;
         height: 100%;
         display: flex;
         flex-direction: column;
-    }
-    .titlebar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #111;
-        color: lightgreen;
-        padding: 2px 8px;
-        font-size: 9pt;
-        font-family: monospace;
-    }
-    .close-btn {
-        all: unset;
-        cursor: pointer;
-        font-size: 14px;
-        line-height: 1;
-        padding: 0 2px;
-        color: lightgreen;
-    }
-    .close-btn:hover {
-        color: red;
     }
     .terminal-body {
         background-color: black;

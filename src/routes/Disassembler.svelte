@@ -1,27 +1,17 @@
 <script lang="ts">
     import { i8080_opcode } from "$lib/i8080_disasm";
 
-    let { memory, pc, onclose, embedded = false }: { memory: any; pc: () => number; onclose: () => void; embedded?: boolean } = $props();
-
-    let panel = $state<HTMLDivElement>();
-    let dragging = $state(false);
-    let dragOffset = { x: 0, y: 0 };
-
-    function onMouseDown(e: MouseEvent) {
-        if ((e.target as HTMLElement).closest("button, input")) return;
-        dragging = true;
-        const rect = panel!.getBoundingClientRect();
-        dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        e.preventDefault();
-    }
-    function onMouseMove(e: MouseEvent) {
-        if (!dragging || !panel) return;
-        panel.style.left = `${e.clientX - dragOffset.x}px`;
-        panel.style.top = `${e.clientY - dragOffset.y}px`;
-        panel.style.right = "auto";
-        panel.style.bottom = "auto";
-    }
-    function onMouseUp() { dragging = false; }
+    let {
+        memory,
+        pc,
+        initialDataAddr = "0000",
+        ondatachange,
+    }: {
+        memory: any;
+        pc: () => number;
+        initialDataAddr?: string;
+        ondatachange?: (addr: string) => void;
+    } = $props();
 
     const hex = (v: number) => v.toString(16).toUpperCase();
     const hex8 = (v: number) => hex(v).padStart(2, "0");
@@ -38,7 +28,9 @@
 
     let codeAddr = $state("0000");
     let codeLines = $state(22);
-    let dataAddr = $state("0000");
+
+    // svelte-ignore state_referenced_locally
+    let dataAddr = $state(initialDataAddr);
     let dataLines = $state(12);
 
     let codeHtml = $state("");
@@ -82,6 +74,7 @@
     }
 
     function renderData() {
+        ondatachange?.(dataAddr);
         let addr = parseInt("0x" + dataAddr);
         const lines = [];
         for (let i = 0; i < dataLines; i++) {
@@ -97,7 +90,10 @@
         dataHtml = lines.join("<br />");
     }
 
-    function refresh() { renderCode(); renderData(); }
+    function refresh() {
+        renderCode();
+        renderData();
+    }
 
     function goCodePC() {
         codeAddr = hex16(pc());
@@ -136,34 +132,59 @@
         const el = (e.target as HTMLElement).closest("[data-addr]") as HTMLElement | null;
         if (!el) return;
         const addr = el.dataset.addr!;
-        if (el.classList.contains("disasm_code_offset")) { codeAddr = addr; renderCode(); }
-        else if (el.classList.contains("disasm_data_offset")) { dataAddr = addr; renderData(); }
+        if (el.classList.contains("disasm_code_offset")) {
+            codeAddr = addr;
+            renderCode();
+        } else if (el.classList.contains("disasm_data_offset")) {
+            dataAddr = addr;
+            renderData();
+        }
     }
 
     import { onMount } from "svelte";
-    onMount(() => { goCodePC(); renderData(); });
+    onMount(() => {
+        goCodePC();
+        renderData();
+    });
 </script>
 
-<svelte:window on:mousemove={embedded ? undefined : onMouseMove} on:mouseup={embedded ? undefined : onMouseUp} />
-
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class={embedded ? "disasm-embedded" : "disasm-panel"} bind:this={panel} onmousedown={embedded ? undefined : onMouseDown} onkeydown={(e) => e.stopPropagation()} onkeyup={(e) => e.stopPropagation()}>
-    {#if !embedded}
-        <div class="titlebar">
-            <span>Disassembler</span>
-            <button class="close-btn" type="button" onclick={onclose}>&times;</button>
-        </div>
-    {/if}
+<div
+    class="disasm"
+    onkeydown={(e) => e.stopPropagation()}
+    onkeyup={(e) => e.stopPropagation()}
+>
     <div class="toolbar">
         <button type="button" onclick={() => codeShift(-1)}>«</button>
         <button type="button" onclick={() => codeShift(-1, true)}>‹</button>
-        <input type="text" bind:value={codeAddr} style="width: calc(4ch + 4px)" onchange={renderCode} onkeydown={(e) => { if (e.key === "Enter") renderCode(); }} />
+        <input
+            type="text"
+            bind:value={codeAddr}
+            style="width: calc(4ch + 4px)"
+            onchange={renderCode}
+            onkeydown={(e) => {
+                if (e.key === "Enter") renderCode();
+            }}
+        />
         /
-        <input type="number" bind:value={codeLines} style="width: calc(5ch + 4px)" onchange={renderCode} onkeydown={(e) => { if (e.key === "Enter") renderCode(); }} />
+        <input
+            type="number"
+            bind:value={codeLines}
+            style="width: calc(5ch + 4px)"
+            onchange={renderCode}
+            onkeydown={(e) => {
+                if (e.key === "Enter") renderCode();
+            }}
+        />
         <button type="button" onclick={renderCode} data-text="Перейти по адресу">▶</button>
         <button type="button" onclick={() => codeShift(1, true)}>›</button>
         <button type="button" onclick={() => codeShift(1)}>»</button>
-        <button type="button" onclick={goCodePC} style="margin-left: 4px; text-decoration: underline" data-text="Перейти на PC">PC</button>
+        <button
+            type="button"
+            onclick={goCodePC}
+            style="margin-left: 4px; text-decoration: underline"
+            data-text="Перейти на PC">PC</button
+        >
     </div>
     <hr />
     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -174,9 +195,25 @@
     <div class="toolbar">
         <button type="button" onclick={() => dataShift(-1)}>«</button>
         <button type="button" onclick={() => dataShift(-1, true)}>‹</button>
-        <input type="text" bind:value={dataAddr} style="width: calc(4ch + 4px)" onchange={renderData} onkeydown={(e) => { if (e.key === "Enter") renderData(); }} />
+        <input
+            type="text"
+            bind:value={dataAddr}
+            style="width: calc(4ch + 4px)"
+            onchange={renderData}
+            onkeydown={(e) => {
+                if (e.key === "Enter") renderData();
+            }}
+        />
         /
-        <input type="number" bind:value={dataLines} style="width: calc(5ch + 4px)" onchange={renderData} onkeydown={(e) => { if (e.key === "Enter") renderData(); }} />
+        <input
+            type="number"
+            bind:value={dataLines}
+            style="width: calc(5ch + 4px)"
+            onchange={renderData}
+            onkeydown={(e) => {
+                if (e.key === "Enter") renderData();
+            }}
+        />
         <button type="button" onclick={renderData} data-text="Перейти по адресу">▶</button>
         <button type="button" onclick={() => dataShift(1, true)}>›</button>
         <button type="button" onclick={() => dataShift(1)}>»</button>
@@ -186,23 +223,7 @@
 </div>
 
 <style>
-    .disasm-panel {
-        position: fixed;
-        right: 10px;
-        bottom: 40px;
-        width: fit-content;
-        height: fit-content;
-        overflow: auto;
-        background-color: #000000;
-        color: #ffffff;
-        border: 1px solid #444;
-        font-family: monospace;
-        font-size: small;
-        z-index: 1000;
-        cursor: move;
-        user-select: none;
-    }
-    .disasm-embedded {
+    .disasm {
         width: fit-content;
         height: 100%;
         overflow: auto;
@@ -211,22 +232,6 @@
         font-family: monospace;
         font-size: x-small;
     }
-    .titlebar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #333;
-        padding: 1px 4px;
-        font-size: 9pt;
-    }
-    .close-btn {
-        all: unset;
-        cursor: pointer;
-        font-size: 14px;
-        line-height: 1;
-        padding: 0 2px;
-    }
-    .close-btn:hover { color: red; }
     .toolbar {
         padding: 2px 4px;
     }
@@ -242,7 +247,9 @@
         border: none;
         font-family: monospace;
     }
-    hr { margin: 2px 0; }
+    hr {
+        margin: 2px 0;
+    }
     code {
         display: block;
         padding: 2px 4px;
