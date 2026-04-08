@@ -42,6 +42,7 @@ export class UI {
     toggle_assembler: (() => void) | undefined;
     on_visualizer_hit: ((opcode: number) => void) | undefined;
     on_pause_changed: ((value: boolean) => void) | undefined;
+    refreshDebugger: (() => void) | undefined;
 
     constructor(machine: Machine, canvas: HTMLCanvasElement) {
         this.machine = machine;

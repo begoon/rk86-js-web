@@ -2,7 +2,7 @@
     import { resolve } from "$app/paths";
     import { catalog } from "$lib/catalog_data";
 
-    let filter = $state("");
+    let filter = $state("игра");
 
     const filtered = $derived(
         filter.length < 2
@@ -41,7 +41,8 @@
 <main>
     <h1>Каталог программ для Радио-86РК</h1>
     <div class="search-bar">
-        <input type="text" placeholder="Поиск..." bind:value={filter} />
+        <!-- svelte-ignore a11y_autofocus -->
+        <input type="text" placeholder="Поиск..." bind:value={filter} autofocus />
         <span class="quick-filters">
             {#each quickFilters as qf}
                 <button type="button" class="filter-btn" class:active={filter === qf} onclick={() => (filter = filter === qf ? "" : qf)}

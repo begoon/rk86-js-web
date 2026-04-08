@@ -240,7 +240,7 @@ export default class CLI {
 
     write_byte_cmd(args: string[]) {
         if (args.length < 2) {
-            this.put("w start_address byte1, [byte2, [byte3]...]");
+            this.put("w адрес байт1, [байт2, [байт3]...]");
             return;
         }
 
@@ -259,7 +259,7 @@ export default class CLI {
 
     write_word_cmd(args: string[]) {
         if (args.length < 2) {
-            this.put("ww start_address word1, [word2, [word3]...]");
+            this.put("ww адрес слово1, [слово2, [слово3]...]");
             return;
         }
 
@@ -286,7 +286,7 @@ export default class CLI {
 
     write_char_cmd(args: string[]) {
         if (args.length < 2) {
-            this.put("wc start_address string");
+            this.put("wc адрес строка");
             return;
         }
 
@@ -307,7 +307,7 @@ export default class CLI {
     }
 
     print_breakpoint(n: number, breakpoint: Breakpoint): void {
-        const active = breakpoint.active == "yes" ? "active" : "disabled";
+        const active = breakpoint.active == "yes" ? "активен" : "отключен";
         const count = breakpoint.count ? " count:%d/%d".format(breakpoint.count, breakpoint.hits) : "";
         this.put("breakpoint #%s %s %s %04X%s".format(n, breakpoint.type, active, breakpoint.address, count));
     }
@@ -379,23 +379,23 @@ export default class CLI {
 
         if (state == "on" || state == "off") {
             if (state == "on") {
-                this.put("Tracing is on");
+                this.put("Трассировка включена");
                 runner.tracer = (when: string) => {
                     const { cpu } = this.machine.runner;
                     return this.tracer_callback(cpu, when);
                 };
             } else {
                 runner.tracer = null;
-                this.put("Tracing is off");
+                this.put("Трассировка выключена");
             }
         } else {
-            this.put("Trace is %s".format(runner.tracer ? "on" : "off"));
+            this.put("Трассировка %s".format(runner.tracer ? "включена" : "выключена"));
         }
     }
 
     check_tracer_active() {
         if (this.machine.runner.tracer == null) {
-            this.put("Tracing is not active. Use 't' command to activate.");
+            this.put("Трассировка не активна. Используйте команду 't' для активации.");
             return false;
         }
         return true;
@@ -455,6 +455,7 @@ export default class CLI {
         this.machine.pause(true);
         this.cpu_cmd();
         this.put("остановлено на %04X".format(this.machine.cpu.pc));
+        this.machine.ui.refreshDebugger?.();
     }
 
     resume_cmd() {
@@ -552,7 +553,8 @@ export default class CLI {
                 console.log(description, args);
                 handler.call(this, args);
             } else {
-                this.put("?");
+                this.put("неизвестная команда: %s\n".format(cmd));
+                this.put("введите '?' для получения списка команд\n");
             }
         }
     }

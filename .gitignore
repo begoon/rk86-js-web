@@ -6,4 +6,5 @@ index.html
 build
 src/lib/catalog_data.ts
 src/lib/tape_catalog.ts
+src/lib/rk86_version.ts
 static/radio86-emulator.js

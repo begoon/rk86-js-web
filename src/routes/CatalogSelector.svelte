@@ -11,6 +11,10 @@
     import { onMount } from "svelte";
     onMount(() => filterInput?.focus());
 
+    export function focus() {
+        filterInput?.focus();
+    }
+
     const filtered = $derived(
         filter ? files.filter((f) => f.toLowerCase().includes(filter.toLowerCase())) : files,
     );

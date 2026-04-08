@@ -44,11 +44,15 @@ All three are auto-generated via `svelte.config.js` on every build/dev.
 - Source of truth for programs: `static/files/` — every file must have `static/catalog/<name>/info.md`
 - Imports use `.js` extension in `.ts` files (SvelteKit/Vite requirement)
 - `$lib` alias points to `src/lib/`
-- Floating panels (visualizer, disassembler, keyboard, terminal) are non-modal, draggable Svelte components
+- Debugger mode: combined view with 1:1 canvas (top-left), disassembler (right), console (below). Canvas click focuses keyboard input to emulator; clicking disassembler/console redirects input there
+- Floating panels (visualizer, keyboard) are non-modal, draggable Svelte components
+- Disassembler and Terminal are embedded-only (no standalone floating mode)
 - Assembler is an iframe (`static/i8080asm.html`) accessing `window.parent.machine`
 - `window.machine` is exposed for the assembler iframe
 - UI state from engine callbacks flows through `ui_state.svelte.ts` (reactive `$state` object)
 - Machine methods (`reset`, `restart`, `pause`, `loadCatalogFile`, `runLoadedFile`, `uploadFile`) are assigned in `boot.ts`
-- Keyboard shortcuts: `Cmd/Ctrl+K` then a letter key
+- Keyboard shortcuts: `Cmd/Ctrl+K` then a letter key (`D` for debugger, `A` for assembler, etc.)
+- Icon buttons in toolbar are non-focusable (`tabindex=-1`) to prevent accidental activation via Enter/Space
+- Dialogs blur active element on close to prevent focus returning to triggering button
 - `BASE_PATH` env var sets deployment base path (e.g. `BASE_PATH=/alpha bun run build`)
 - All text in UI is in Russian

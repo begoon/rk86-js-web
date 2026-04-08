@@ -17,6 +17,12 @@
 
     let keyboardVisible = $state(false);
     let catalogDialog = $state<HTMLDialogElement>();
+    let catalogSelector = $state<CatalogSelector>();
+
+    function openCatalog() {
+        catalogDialog?.showModal();
+        setTimeout(() => catalogSelector?.focus(), 0);
+    }
     let uploadInput = $state<HTMLInputElement>();
 
     let canvas = $state<HTMLCanvasElement>();
@@ -50,6 +56,9 @@
                     if (!terminal) return [];
                     return terminal.currentHistory();
                 },
+            };
+            m.ui.refreshDebugger = () => {
+                disassemblerRef?.goCodePC();
             };
             machine = m;
             cli = new CLI(machine);
@@ -97,7 +106,7 @@
         v: toggleVisualizer,
         d: toggleDebugger,
         b: () => (keyboardVisible = !keyboardVisible),
-        l: () => catalogDialog?.showModal(),
+        l: () => openCatalog(),
         o: () => window.open(resolve("/catalog"), "_blank"),
         u: () => uploadInput?.click(),
         g: () => machine?.runLoadedFile(),
@@ -140,6 +149,7 @@
     let assemblerVisible = $state(false);
     let visualizerVisible = $state(false);
     let debuggerVisible = $state(false);
+    let disassemblerRef = $state<Disassembler>();
     let canvasFocused = $state(false);
     let lastDataAddr = $state("0000");
     let debuggerCanvasSlot = $state<HTMLDivElement>();
@@ -239,7 +249,7 @@
                 type="button"
                 class="icon"
                 data-text="Выбрать файл из каталога"
-                onclick={() => catalogDialog?.showModal()}
+                onclick={() => openCatalog()}
             >
                 <img class="icon" src="i/catalog.svg" alt="Выбрать файл из каталога" />
             </button>
@@ -336,7 +346,7 @@
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="debugger-disasm" onclick={() => (canvasFocused = false)}>
-                <Disassembler memory={machine.memory} pc={() => machine!.cpu.pc} initialDataAddr={lastDataAddr} ondatachange={(addr) => lastDataAddr = addr} />
+                <Disassembler bind:this={disassemblerRef} memory={machine.memory} cpu={machine.cpu} pc={() => machine!.cpu.pc} initialDataAddr={lastDataAddr} ondatachange={(addr) => lastDataAddr = addr} />
             </div>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -478,6 +488,7 @@
     onclose={() => (document.activeElement as HTMLElement)?.blur()}
 >
     <CatalogSelector
+        bind:this={catalogSelector}
         onselect={(name) => {
             catalogDialog?.close();
             machine?.loadCatalogFile(name);

@@ -1,13 +1,17 @@
 <script lang="ts">
     import { i8080_opcode } from "$lib/i8080_disasm";
 
+    import type { I8080 } from "$lib/i8080";
+
     let {
         memory,
+        cpu,
         pc,
         initialDataAddr = "0000",
         ondatachange,
     }: {
         memory: any;
+        cpu: I8080;
         pc: () => number;
         initialDataAddr?: string;
         ondatachange?: (addr: string) => void;
@@ -36,12 +40,29 @@
     let codeHtml = $state("");
     let dataHtml = $state("");
 
-    function renderCode() {
-        let addr = parseInt("0x" + codeAddr);
+    function walkBack(from: number, steps: number): number {
+        let addr = from;
+        for (let n = 0; n < steps; n++) {
+            let i;
+            for (i = 3; i > 0; --i) {
+                const d = disasm(wrap(addr - i));
+                if (d.length === i) break;
+            }
+            addr = wrap(addr - (i > 0 ? i : 1));
+        }
+        return addr;
+    }
+
+    function renderCode(center = false) {
+        const targetAddr = parseInt("0x" + codeAddr);
+        let addr = center ? walkBack(targetAddr, Math.floor(codeLines / 2)) : targetAddr;
         const lines = [];
+        const currentPC = pc();
         for (let i = 0; i < codeLines; i++) {
             const instr = disasm(addr);
-            let line = hex16(addr) + ": ";
+            const addrStr = hex16(addr);
+            const isPC = addr === currentPC;
+            let line = (isPC ? `<span class="flag-set">${addrStr}</span>` : addrStr) + `:&nbsp;`;
             let chars = "";
             for (let j = 0; j < instr.length; ++j) {
                 const ch = memory.read(addr + j);
@@ -67,7 +88,7 @@
                 const action = instr.data2 ? "data" : undefined;
                 line += ", " + fmtArg(action, instr.arg2);
             }
-            lines.push(line);
+            lines.push(isPC ? `<span class="pc-line">${line}</span>` : line);
             addr = wrap(addr + instr.length);
         }
         codeHtml = lines.join("<br />");
@@ -90,14 +111,73 @@
         dataHtml = lines.join("<br />");
     }
 
-    function refresh() {
+    export function refresh() {
         renderCode();
+        renderRegs();
         renderData();
     }
 
-    function goCodePC() {
+    let regsHtml = $state("");
+
+    function renderRegs() {
+        const r = cpu.regs;
+        const bc = (r[0] << 8) | r[1];
+        const de = (r[2] << 8) | r[3];
+        const hl = (r[4] << 8) | r[5];
+        const a = r[7];
+        const f = cpu.store_flags();
+        const flagDef = "SZ_H_P_C"; // _ = unused/hardcoded bit
+        const flags = flagDef.split("").map((ch, i) => {
+            const bit = (f >> (7 - i)) & 1;
+            if (ch === "_") return `<span class="flag-unused">${bit}</span>`;
+            return bit ? `<span class="flag-set">${ch}</span>` : `<span class="flag-unset">-</span>`;
+        }).join("");
+
+        const pair = (name: string, val: number) =>
+            `${name}:<span class="reg-link" data-regaddr="${hex16(val)}">${hex16(val)}</span>`;
+
+        const sp = cpu.sp;
+        const stackStart = wrap(sp - 10);
+        let stackHtml = `SP(<span class="reg-link" data-regaddr="${hex16(stackStart)}">${hex16(stackStart)}</span>): `;
+        for (let j = 0; j < 14; j += 2) {
+            const lo = memory.read(wrap(stackStart + j));
+            const hi = memory.read(wrap(stackStart + j + 1));
+            const word = (hi << 8) | lo;
+            const addr = wrap(stackStart + j);
+            const isSP = addr === sp;
+            const cls = isSP ? "reg-link flag-set" : "reg-link";
+            stackHtml += `<span class="${cls}" data-regaddr="${hex16(word)}">${hex8(lo)}&nbsp;${hex8(hi)}</span> `;
+        }
+
+        regsHtml = [
+            `A:${hex8(a)}`,
+            `F:${flags}`,
+            pair("BC", bc),
+            pair("DE", de),
+            pair("HL", hl),
+            `SP:<span class="reg-link flag-set" data-regaddr="${hex16(cpu.sp)}">${hex16(cpu.sp)}</span>`,
+            pair("PC", cpu.pc),
+        ].join(" ") + `<br/><span class="registers-stack">${stackHtml}</span>`;
+    }
+
+    function handleRegClick(e: MouseEvent) {
+        const el = (e.target as HTMLElement).closest("[data-regaddr]") as HTMLElement | null;
+        if (!el) return;
+        const addr = el.dataset.regaddr!;
+        if (el.closest(".registers-stack")) {
+            codeAddr = addr;
+            renderCode(true);
+        } else {
+            dataAddr = addr;
+            renderData();
+        }
+    }
+
+    export function goCodePC() {
         codeAddr = hex16(pc());
-        renderCode();
+        renderCode(true);
+        renderRegs();
+        renderData();
     }
 
     function codeShift(direction: number, one = false) {
@@ -134,7 +214,7 @@
         const addr = el.dataset.addr!;
         if (el.classList.contains("disasm_code_offset")) {
             codeAddr = addr;
-            renderCode();
+            renderCode(true);
         } else if (el.classList.contains("disasm_data_offset")) {
             dataAddr = addr;
             renderData();
@@ -192,6 +272,10 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <code onclick={handleCodeClick}>{@html codeHtml}</code>
     <hr />
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="registers" onclick={handleRegClick}>{@html regsHtml}</div>
+    <hr />
     <div class="toolbar">
         <button type="button" onclick={() => dataShift(-1)}>«</button>
         <button type="button" onclick={() => dataShift(-1, true)}>‹</button>
@@ -232,6 +316,27 @@
         font-family: monospace;
         font-size: x-small;
     }
+    .registers {
+        padding: 2px 4px;
+        color: #ccc;
+        white-space: nowrap;
+    }
+    :global(.reg-link) {
+        color: lightblue;
+        cursor: pointer;
+    }
+    :global(.reg-link:hover) {
+        text-decoration: underline;
+    }
+    :global(.flag-set) {
+        color: #ffcc00;
+    }
+    :global(.flag-unset) {
+        color: #666;
+    }
+    :global(.flag-unused) {
+        color: #444;
+    }
     .toolbar {
         padding: 2px 4px;
     }
@@ -255,6 +360,11 @@
         padding: 2px 4px;
         white-space: nowrap;
         cursor: default;
+    }
+    :global(.pc-line) {
+        background-color: #333;
+        display: inline-block;
+        width: 100%;
     }
     :global(.disasm_code_offset) {
         color: lightgreen;
