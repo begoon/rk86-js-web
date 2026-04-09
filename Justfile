@@ -32,3 +32,8 @@ release-alpha:
 release-beta:
     BASE_PATH=/beta bun run build 
     cp -R ./build/* ../rk86-js/docs/beta/
+
+release: release-beta release-alpha
+
+terminal *args='':
+    bun src/lib/rk86_terminal.ts {{args}}
