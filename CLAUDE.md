@@ -30,14 +30,19 @@ RK-86 emulator (Intel 8080 CPU) built with SvelteKit. Also available as a standa
 - `src/routes/catalog/` — program catalog page
 - `static/` — static assets (assembler HTML, icons, ROM/program files, catalog data)
 - `tests/` — bun unit tests
+- `tests/cpu/` — auto-generated table-driven CPU test data (one file per instruction)
+- `tests/generate_cpu_data.ts` — generates `tests/cpu/*_data.ts` from the CPU implementation
 
 ## Generated files (gitignored)
 
 - `src/lib/tape_catalog.ts` — file list from `static/files/`
 - `src/lib/catalog_data.ts` — catalog metadata from `static/catalog/*/info.md`
+- `src/lib/rk86_version.ts` — build timestamp
 - `static/radio86-emulator.js` — bundled web component
 
-All three are auto-generated via `svelte.config.js` on every build/dev.
+All four are auto-generated via `svelte.config.js` on every build/dev.
+
+- `tests/cpu/*_data.ts` — CPU test tables (regenerate with `bun tests/generate_cpu_data.ts`)
 
 ## Conventions
 

@@ -165,7 +165,8 @@ src/lib/boot.ts   — инициализация машины
 src/routes/       — SvelteKit страницы и UI-компоненты
 static/files/     — бинарные файлы программ (180+)
 static/catalog/   — метаданные и скриншоты программ
-tests/            — модульные тесты
+tests/            — модульные тесты (164 теста, 1.7M проверок)
+tests/cpu/        — таблицы тестов CPU (авто-генерация: bun tests/generate_cpu_data.ts)
 ```
 
 ## Лицензия
