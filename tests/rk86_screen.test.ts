@@ -2,8 +2,6 @@ import { beforeEach, expect, test } from "bun:test";
 
 import { Screen } from "../src/lib/rk86_screen.js";
 
-globalThis.Image = function () {} as any;
-
 let screen: Screen;
 
 beforeEach(() => {

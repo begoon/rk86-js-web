@@ -10,8 +10,6 @@ import { rk86_snapshot, rk86_snapshot_restore } from "../src/lib/rk86_snapshot.j
 const document = {};
 const window = { setTimeout() {} };
 
-globalThis.Image = function () {} as any;
-
 const version = "0.0.0";
 
 let machine: Machine;
@@ -157,19 +155,19 @@ test.each([
     ["string", JSON.stringify(EXPECTED_SNAPSHOT)],
     ["object", EXPECTED_SNAPSHOT],
 ])("restore from %s", (type, snapshot) => {
-    expect.assertions(51);
+    expect.assertions(50);
 
     const origLog = console.log;
-    console.log = (str) => expect(str).toBe("установлен размер экрана: 3 x 4");
+    const logMessages: string[] = [];
+    console.log = (...args: unknown[]) => logMessages.push(args.join(" "));
 
-    machine.ui.update_screen_geometry = (width, height) => expect([width, height]).toEqual([3, 4]);
-    machine.ui.resize_canvas = (width, height) => expect([width, height]).toEqual([18, 80]);
-
-    machine.screen.ctx = {} as unknown as CanvasRenderingContext2D;
-    machine.screen.ctx.fillRect = (x, y, width, height) => expect([x, y, width, height]).toEqual([0, 0, 18, 80]);
-    machine.screen.set_video_memory = (base) => expect(base).toBe(0x1111);
+    machine.ui.update_screen_geometry = (width: number, height: number) => expect([width, height]).toEqual([3, 4]);
+    machine.ui.update_video_memory_address = (base: number) => expect(base).toBe(0x1111);
 
     expect(rk86_snapshot_restore(snapshot, machine)).toBeTrue();
+
+    expect(logMessages[0]).toBe("установлен размер экрана: 3 x 4");
+    expect(logMessages[1]).toContain("установлена видеопамять с адреса");
 
     expect(machine.cpu.a()).toBe(0xe6);
     expect(machine.cpu.sf).toBe(1);

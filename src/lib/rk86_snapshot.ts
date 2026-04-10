@@ -42,7 +42,6 @@ export function rk86_snapshot_restore(
         memory.import(json.memory);
 
         screen.apply_import();
-        screen.init_cache(screen.video_memory_size);
 
         if (keys_injector && json.boot?.keyboard) keys_injector(json.boot?.keyboard);
         return true;

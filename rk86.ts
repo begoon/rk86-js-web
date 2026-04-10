@@ -2467,6 +2467,18 @@ var extract_rk86_word = function(v, i) {
 };
 var to_text = (binary) => binary.reduce((a, x) => a + String.fromCharCode(x), "");
 var is_hex_file = (image) => to_text(image.slice(0, 6)) === "#!rk86";
+var parse = (binary) => {
+  try {
+    if (!binary)
+      return { ok: false };
+    if (binary instanceof Uint8Array)
+      binary = Array.from(binary);
+    const text = to_text(binary);
+    return { ok: true, json: JSON.parse(text) };
+  } catch {
+    return { ok: false };
+  }
+};
 var convert_hex_to_binary = function(text) {
   const lines = text.split(`
 `).filter((line) => line.trim().length).filter((line) => !line.startsWith(";") && !line.startsWith("#"));
@@ -2658,7 +2670,7 @@ function create(array, width = 16) {
   }
   return v;
 }
-function parse(hex2) {
+function parse2(hex2) {
   const array = [];
   for (let [label, line] of Object.entries(hex2)) {
     const address = parseInt(label.slice(1), 16);
@@ -2772,7 +2784,7 @@ class Memory {
     this.video_screen_cursor_y = snapshot.video_screen_cursor_y;
     this.last_access_address = h(snapshot.last_access_address);
     this.last_access_operation = snapshot.last_access_operation;
-    this.buf = parse(snapshot.memory);
+    this.buf = parse2(snapshot.memory);
   };
   invalidate_access_variables() {
     this.last_access_address = 0;
@@ -3102,11 +3114,6 @@ class Screen {
   static #update_rate = 25;
   machine;
   cursor_rate;
-  char_width;
-  char_height;
-  char_height_gap;
-  cursor_width;
-  cursor_height;
   scale_x;
   scale_y;
   width;
@@ -3114,22 +3121,15 @@ class Screen {
   cursor_state;
   cursor_x;
   cursor_y;
-  last_cursor_state;
-  last_cursor_x;
-  last_cursor_y;
-  font;
   light_pen_x;
   light_pen_y;
   light_pen_active;
-  ctx;
+  video_memory_base = 0;
+  video_memory_size = 0;
+  renderer;
   constructor(machine) {
     this.machine = machine;
     this.cursor_rate = 500;
-    this.char_width = 6;
-    this.char_height = 8;
-    this.char_height_gap = 2;
-    this.cursor_width = this.char_width;
-    this.cursor_height = 1;
     this.scale_x = 1;
     this.scale_y = 1;
     this.width = 78;
@@ -3137,11 +3137,6 @@ class Screen {
     this.cursor_state = false;
     this.cursor_x = 0;
     this.cursor_y = 0;
-    this.last_cursor_state = false;
-    this.last_cursor_x = 0;
-    this.last_cursor_y = 0;
-    this.font = new Image;
-    this.font.src = this.machine.font;
     this.light_pen_x = 0;
     this.light_pen_y = 0;
     this.light_pen_active = 0;
@@ -3182,73 +3177,32 @@ class Screen {
     this.set_geometry(this.width, this.height);
     this.set_video_memory(this.video_memory_base);
   }
-  start() {
-    this.init();
-    this.draw_screen();
+  start(renderer) {
+    this.renderer = renderer;
+    this.renderer.connect(this.machine);
     this.flip_cursor();
-    this.machine.ui.canvas.onmousemove = this.handle_mousemove.bind(this);
-    this.machine.ui.canvas.onmouseup = () => this.light_pen_active = 0;
-    this.machine.ui.canvas.onmousedown = () => this.light_pen_active = 1;
+    this.render_loop();
   }
-  cache = [];
-  init_cache(sz) {
-    for (let i = 0;i < sz; ++i)
-      this.cache[i] = -1;
-  }
-  draw_char(x, y, ch) {
-    this.ctx.drawImage(this.font, 2, this.char_height * ch, this.char_width, this.char_height, x * this.char_width * this.scale_x, y * (this.char_height + this.char_height_gap) * this.scale_y, this.char_width * this.scale_x, this.char_height * this.scale_y);
-  }
-  draw_cursor(x, y, visible) {
-    const cy = (y2) => (y2 * (this.char_height + this.char_height_gap) + this.char_height) * this.scale_y;
-    if (this.last_cursor_x !== x || this.last_cursor_y !== y) {
-      if (this.last_cursor_state) {
-        this.ctx.fillStyle = "#000000";
-        this.ctx.fillRect(this.last_cursor_x * this.char_width * this.scale_x, cy(this.last_cursor_y), this.cursor_width * this.scale_x, this.cursor_height * this.scale_y);
-      }
-      this.last_cursor_state = this.cursor_state;
-      this.last_cursor_x = x;
-      this.last_cursor_y = y;
-    }
-    const cx = x * this.char_width * this.scale_x;
-    this.ctx.fillStyle = visible ? "#ffffff" : "#000000";
-    this.ctx.fillRect(cx, cy(y), this.cursor_width * this.scale_x, this.cursor_height * this.scale_y);
-  }
-  flip_cursor() {
-    this.draw_cursor(this.cursor_x, this.cursor_y, this.cursor_state);
-    this.cursor_state = !this.cursor_state;
-    setTimeout(() => this.flip_cursor(), this.cursor_rate);
-  }
-  init() {
-    this.ctx = this.machine.ui.canvas.getContext("2d");
-  }
-  disable_smoothing() {
-    this.ctx.imageSmoothingEnabled = false;
+  render_loop() {
+    this.renderer.update();
+    setTimeout(() => this.render_loop(), Screen.#update_rate);
   }
   last_width = 0;
   last_height = 0;
-  video_memory_size = 0;
   set_geometry(width, height) {
     this.width = width;
     this.height = height;
     this.video_memory_size = width * height;
     this.machine.ui.update_screen_geometry(this.width, this.height);
-    const canvas_width = this.width * this.char_width * this.scale_x;
-    const canvas_height = this.height * (this.char_height + this.char_height_gap) * this.scale_y;
-    this.machine.ui.resize_canvas(canvas_width, canvas_height);
-    this.disable_smoothing();
-    this.ctx.fillStyle = "#000000";
-    this.ctx.fillRect(0, 0, canvas_width, canvas_height);
     if (this.last_width === this.width && this.last_height === this.height)
       return;
     console.log(`\u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D \u0440\u0430\u0437\u043C\u0435\u0440 \u044D\u043A\u0440\u0430\u043D\u0430: ${width} x ${height}`);
     this.last_width = this.width;
     this.last_height = this.height;
   }
-  video_memory_base = 0;
   last_video_memory_base = 0;
   set_video_memory(base) {
     this.video_memory_base = base;
-    this.init_cache(this.video_memory_size);
     this.machine.ui.update_video_memory_address(this.video_memory_base);
     if (this.last_video_memory_base === this.video_memory_base)
       return;
@@ -3256,37 +3210,35 @@ class Screen {
     this.last_video_memory_base = this.video_memory_base;
   }
   set_cursor(x, y) {
-    this.draw_cursor(this.cursor_x, this.cursor_y, false);
     this.cursor_x = x;
     this.cursor_y = y;
   }
-  draw_screen() {
-    const memory = this.machine.memory;
-    let i = this.video_memory_base;
-    for (let y = 0;y < this.height; ++y) {
-      for (let x = 0;x < this.width; ++x) {
-        const cache_i = i - this.video_memory_base;
-        const ch = memory.read(i);
-        if (this.cache[cache_i] !== ch) {
-          this.draw_char(x, y, ch);
-          this.cache[cache_i] = ch;
-        }
-        i += 1;
-      }
-    }
-    setTimeout(() => this.draw_screen(), Screen.#update_rate);
+  flip_cursor() {
+    this.cursor_state = !this.cursor_state;
+    setTimeout(() => this.flip_cursor(), this.cursor_rate);
   }
-  handle_mousemove(event) {
-    const canvas = this.machine.ui.canvas;
-    const box = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / box.width;
-    const scaleY = canvas.height / box.height;
-    const mouseX = (event.clientX - box.left) * scaleX;
-    const mouseY = (event.clientY - box.top) * scaleY;
-    const x = Math.floor(mouseX / (this.char_width * this.scale_x));
-    const y = Math.floor(mouseY / ((this.char_height + this.char_height_gap) * this.scale_y));
-    this.light_pen_x = x;
-    this.light_pen_y = y;
+}
+
+// src/lib/rk86_snapshot.ts
+function rk86_snapshot_restore(snapshot, machine, keys_injector) {
+  try {
+    const json = typeof snapshot === "string" ? JSON.parse(snapshot) : snapshot;
+    if (json.id != "rk86")
+      return false;
+    if (!machine)
+      return false;
+    const { screen, cpu, memory, keyboard } = machine;
+    cpu.import(json.cpu);
+    keyboard.import(json.keyboard);
+    screen.import(json.screen);
+    memory.import(json.memory);
+    screen.apply_import();
+    if (keys_injector && json.boot?.keyboard)
+      keys_injector(json.boot?.keyboard);
+    return true;
+  } catch (e) {
+    console.error("failed restoring snapshot", e);
+    return false;
   }
 }
 
@@ -3392,8 +3344,6 @@ class Tape {
 }
 
 // src/lib/rk86_terminal.ts
-globalThis.Image = class {
-};
 var charMap = {
   0: " ",
   1: "\u2598",
@@ -3559,35 +3509,25 @@ class IO {
   interrupt = (_iff) => {};
 }
 
-class TerminalScreen {
+class TerminalRenderer {
   machine;
-  width = 78;
-  height = 30;
-  video_memory_base = 0;
-  timer;
-  constructor(machine) {
+  connect(machine) {
     this.machine = machine;
   }
-  start() {
-    this.render();
-  }
-  render() {
+  update() {
     const { memory, screen } = this.machine;
-    const cursorX = screen.cursor_x;
-    const cursorY = screen.cursor_y;
-    const cursorVisible = screen.cursor_state;
     const dim = "\x1B[2m";
     const reset = "\x1B[0m";
-    const w = this.width;
+    const w = screen.width;
     let output = "\x1B[H";
     output += `${dim}\u250C${"\u2500".repeat(w)}\u2510${reset}
 `;
-    let addr = this.video_memory_base;
-    for (let y = 0;y < this.height; y++) {
+    let addr = screen.video_memory_base;
+    for (let y = 0;y < screen.height; y++) {
       let line = `${dim}\u2502${reset}`;
       for (let x = 0;x < w; x++) {
         const ch = rk86char(memory.read(addr));
-        if (x === cursorX && y === cursorY) {
+        if (x === screen.cursor_x && y === screen.cursor_y) {
           line += `\x1B[4m${ch}${reset}`;
         } else {
           line += ch;
@@ -3601,7 +3541,6 @@ class TerminalScreen {
     output += `${dim}\u2514${"\u2500".repeat(w)}\u2518${reset}
 `;
     process.stdout.write(output);
-    this.timer = setTimeout(() => this.render(), 40);
   }
 }
 var KEY_MAP = {
@@ -3779,42 +3718,23 @@ async function main() {
   let entryPoint;
   if (programFile) {
     const content = await fetchFile(programFile);
-    const file = parse_rk86_binary(programFile, content);
-    machine.memory.load_file(file);
-    entryPoint = file.entry;
-    console.error(`\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D: ${programFile} (${file.start.toString(16)}-${file.end.toString(16)}, G${file.entry.toString(16)})`);
+    const { ok, json } = parse(content);
+    if (ok) {
+      rk86_snapshot_restore(json, machine);
+      entryPoint = parseInt(json.cpu.pc);
+      console.error(`\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D \u043E\u0431\u0440\u0430\u0437: ${programFile} (PC=${entryPoint.toString(16)})`);
+    } else {
+      const file = parse_rk86_binary(programFile, content);
+      machine.memory.load_file(file);
+      entryPoint = file.entry;
+      console.error(`\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D: ${programFile} (${file.start.toString(16)}-${file.end.toString(16)}, G${file.entry.toString(16)})`);
+    }
   }
   process.stdout.write("\x1B[?25l");
   process.stdout.write("\x1B[2J");
   setupKeyboard(keyboard);
-  const termScreen = new TerminalScreen(machine);
-  const origSetGeometry = machine.screen.set_geometry.bind(machine.screen);
-  machine.screen.set_geometry = (width, height) => {
-    origSetGeometry(width, height);
-    termScreen.width = width;
-    termScreen.height = height;
-  };
-  const origSetVideoMemory = machine.screen.set_video_memory.bind(machine.screen);
-  machine.screen.set_video_memory = (base) => {
-    origSetVideoMemory(base);
-    termScreen.video_memory_base = base;
-  };
-  const noopCtx = {
-    imageSmoothingEnabled: false,
-    fillStyle: "",
-    fillRect() {},
-    drawImage() {},
-    clearRect() {}
-  };
-  machine.screen.ctx = noopCtx;
-  machine.screen.init = () => {
-    machine.screen.ctx = noopCtx;
-  };
-  machine.screen.draw_screen = () => {};
-  machine.screen.draw_cursor = () => {};
-  machine.screen.start();
+  machine.screen.start(new TerminalRenderer);
   machine.runner.execute();
-  termScreen.start();
   if (entryPoint !== undefined && !loadOnly) {
     setTimeout(() => machine.cpu.jump(entryPoint), 500);
   }

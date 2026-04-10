@@ -1,5 +1,6 @@
 import { fromHex, hex16 } from "./hex.js";
 import type { Machine } from "./rk86_machine.js";
+import type { Renderer } from "./rk86_renderer.js";
 
 export interface ScreenSnapshot {
     scale_x: number;
@@ -21,11 +22,6 @@ export class Screen {
 
     machine: Machine;
     cursor_rate: number;
-    char_width: number;
-    char_height: number;
-    char_height_gap: number;
-    cursor_width: number;
-    cursor_height: number;
     scale_x: number;
     scale_y: number;
     width: number;
@@ -33,26 +29,18 @@ export class Screen {
     cursor_state: boolean;
     cursor_x: number;
     cursor_y: number;
-    last_cursor_state: boolean;
-    last_cursor_x: number;
-    last_cursor_y: number;
-    font: HTMLImageElement;
     light_pen_x: number;
     light_pen_y: number;
     light_pen_active: number;
-    ctx!: CanvasRenderingContext2D;
+    video_memory_base = 0;
+    video_memory_size = 0;
+
+    private renderer!: Renderer;
 
     constructor(machine: Machine) {
         this.machine = machine;
 
         this.cursor_rate = 500;
-
-        this.char_width = 6;
-        this.char_height = 8;
-        this.char_height_gap = 2;
-
-        this.cursor_width = this.char_width;
-        this.cursor_height = 1;
 
         this.scale_x = 1;
         this.scale_y = 1;
@@ -63,13 +51,6 @@ export class Screen {
         this.cursor_state = false;
         this.cursor_x = 0;
         this.cursor_y = 0;
-
-        this.last_cursor_state = false;
-        this.last_cursor_x = 0;
-        this.last_cursor_y = 0;
-
-        this.font = new Image();
-        this.font.src = this.machine.font;
 
         this.light_pen_x = 0;
         this.light_pen_y = 0;
@@ -115,75 +96,20 @@ export class Screen {
         this.set_video_memory(this.video_memory_base);
     }
 
-    start() {
-        this.init();
-        this.draw_screen();
+    start(renderer: Renderer) {
+        this.renderer = renderer;
+        this.renderer.connect(this.machine);
         this.flip_cursor();
-
-        this.machine.ui.canvas.onmousemove = this.handle_mousemove.bind(this);
-        this.machine.ui.canvas.onmouseup = () => (this.light_pen_active = 0);
-        this.machine.ui.canvas.onmousedown = () => (this.light_pen_active = 1);
+        this.render_loop();
     }
 
-    cache: number[] = [];
-
-    init_cache(sz: number): void {
-        for (let i = 0; i < sz; ++i) this.cache[i] = -1;
+    private render_loop() {
+        this.renderer.update();
+        setTimeout(() => this.render_loop(), Screen.#update_rate);
     }
 
-    draw_char(x: number, y: number, ch: number): void {
-        this.ctx.drawImage(
-            this.font,
-            2,
-            this.char_height * ch,
-            this.char_width,
-            this.char_height,
-            x * this.char_width * this.scale_x,
-            y * (this.char_height + this.char_height_gap) * this.scale_y,
-            this.char_width * this.scale_x,
-            this.char_height * this.scale_y,
-        );
-    }
-
-    draw_cursor(x: number, y: number, visible: boolean): void {
-        const cy = (y: number) => (y * (this.char_height + this.char_height_gap) + this.char_height) * this.scale_y;
-        if (this.last_cursor_x !== x || this.last_cursor_y !== y) {
-            if (this.last_cursor_state) {
-                this.ctx.fillStyle = "#000000";
-                this.ctx.fillRect(
-                    this.last_cursor_x * this.char_width * this.scale_x,
-                    cy(this.last_cursor_y),
-                    this.cursor_width * this.scale_x,
-                    this.cursor_height * this.scale_y,
-                );
-            }
-            this.last_cursor_state = this.cursor_state;
-            this.last_cursor_x = x;
-            this.last_cursor_y = y;
-        }
-        const cx = x * this.char_width * this.scale_x;
-        this.ctx.fillStyle = visible ? "#ffffff" : "#000000";
-        this.ctx.fillRect(cx, cy(y), this.cursor_width * this.scale_x, this.cursor_height * this.scale_y);
-    }
-
-    flip_cursor() {
-        this.draw_cursor(this.cursor_x, this.cursor_y, this.cursor_state);
-        this.cursor_state = !this.cursor_state;
-        setTimeout(() => this.flip_cursor(), this.cursor_rate);
-    }
-
-    init() {
-        this.ctx = this.machine.ui.canvas.getContext("2d")!;
-    }
-
-    disable_smoothing() {
-        this.ctx.imageSmoothingEnabled = false;
-    }
-
-    last_width = 0;
-    last_height = 0;
-
-    video_memory_size = 0;
+    private last_width = 0;
+    private last_height = 0;
 
     set_geometry(width: number, height: number): void {
         this.width = width;
@@ -192,14 +118,6 @@ export class Screen {
 
         this.machine.ui.update_screen_geometry(this.width, this.height);
 
-        const canvas_width = this.width * this.char_width * this.scale_x;
-        const canvas_height = this.height * (this.char_height + this.char_height_gap) * this.scale_y;
-        this.machine.ui.resize_canvas(canvas_width, canvas_height);
-
-        this.disable_smoothing();
-        this.ctx.fillStyle = "#000000";
-        this.ctx.fillRect(0, 0, canvas_width, canvas_height);
-
         if (this.last_width === this.width && this.last_height === this.height) return;
 
         console.log(`установлен размер экрана: ${width} x ${height}`);
@@ -207,12 +125,10 @@ export class Screen {
         this.last_height = this.height;
     }
 
-    video_memory_base = 0;
-    last_video_memory_base = 0;
+    private last_video_memory_base = 0;
 
     set_video_memory(base: number): void {
         this.video_memory_base = base;
-        this.init_cache(this.video_memory_size);
 
         this.machine.ui.update_video_memory_address(this.video_memory_base);
 
@@ -227,42 +143,12 @@ export class Screen {
     }
 
     set_cursor(x: number, y: number): void {
-        this.draw_cursor(this.cursor_x, this.cursor_y, false);
         this.cursor_x = x;
         this.cursor_y = y;
     }
 
-    draw_screen() {
-        const memory = this.machine.memory;
-        let i = this.video_memory_base;
-        for (let y = 0; y < this.height; ++y) {
-            for (let x = 0; x < this.width; ++x) {
-                const cache_i = i - this.video_memory_base;
-                const ch = memory.read(i);
-                if (this.cache[cache_i] !== ch) {
-                    this.draw_char(x, y, ch);
-                    this.cache[cache_i] = ch;
-                }
-                i += 1;
-            }
-        }
-        setTimeout(() => this.draw_screen(), Screen.#update_rate);
-    }
-
-    handle_mousemove(event: MouseEvent): void {
-        const canvas = this.machine.ui.canvas;
-        const box = canvas.getBoundingClientRect();
-
-        const scaleX = canvas.width / box.width;
-        const scaleY = canvas.height / box.height;
-
-        const mouseX = (event.clientX - box.left) * scaleX;
-        const mouseY = (event.clientY - box.top) * scaleY;
-
-        const x = Math.floor(mouseX / (this.char_width * this.scale_x));
-        const y = Math.floor(mouseY / ((this.char_height + this.char_height_gap) * this.scale_y));
-
-        this.light_pen_x = x;
-        this.light_pen_y = y;
+    private flip_cursor() {
+        this.cursor_state = !this.cursor_state;
+        setTimeout(() => this.flip_cursor(), this.cursor_rate);
     }
 }

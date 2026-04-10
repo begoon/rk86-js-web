@@ -1,8 +1,6 @@
 // Terminal-based RK86 emulator — renders the screen as Unicode text in a terminal.
 // Usage: bun src/lib/rk86_terminal.ts [program.GAM]
 
-globalThis.Image = class {} as any;
-
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { I8080 } from "./i8080.js";
@@ -11,8 +9,10 @@ import { rk86_font_image } from "./rk86_font.js";
 import { Keyboard } from "./rk86_keyboard.js";
 import type { Machine, MachineBuilder } from "./rk86_machine.js";
 import { Memory } from "./rk86_memory.js";
+import type { Renderer } from "./rk86_renderer.js";
 import { Runner } from "./rk86_runner.js";
 import { Screen } from "./rk86_screen.js";
+import { rk86_snapshot_restore } from "./rk86_snapshot.js";
 import { Tape } from "./rk86_tape.js";
 
 // --- RK86 byte → Unicode character mapping ---
@@ -198,42 +198,31 @@ class IO {
     interrupt = (_iff: number): void => {};
 }
 
-// --- Terminal screen renderer ---
+// --- Terminal renderer ---
 
-class TerminalScreen {
-    machine: Machine;
-    width = 78;
-    height = 30;
-    video_memory_base = 0;
-    timer: ReturnType<typeof setTimeout> | undefined;
+class TerminalRenderer implements Renderer {
+    private machine!: Machine;
 
-    constructor(machine: Machine) {
+    connect(machine: Machine): void {
         this.machine = machine;
     }
 
-    start() {
-        this.render();
-    }
-
-    render() {
+    update(): void {
         const { memory, screen } = this.machine;
-        const cursorX = screen.cursor_x;
-        const cursorY = screen.cursor_y;
-        const cursorVisible = screen.cursor_state;
 
         const dim = "\x1b[2m";
         const reset = "\x1b[0m";
-        const w = this.width;
+        const w = screen.width;
 
         let output = "\x1b[H"; // cursor home
         output += `${dim}┌${"─".repeat(w)}┐${reset}\n`;
 
-        let addr = this.video_memory_base;
-        for (let y = 0; y < this.height; y++) {
+        let addr = screen.video_memory_base;
+        for (let y = 0; y < screen.height; y++) {
             let line = `${dim}│${reset}`;
             for (let x = 0; x < w; x++) {
                 const ch = rk86char(memory.read(addr));
-                if (x === cursorX && y === cursorY) {
+                if (x === screen.cursor_x && y === screen.cursor_y) {
                     line += `\x1b[4m${ch}${reset}`;
                 } else {
                     line += ch;
@@ -246,7 +235,6 @@ class TerminalScreen {
         output += `${dim}└${"─".repeat(w)}┘${reset}\n`;
 
         process.stdout.write(output);
-        this.timer = setTimeout(() => this.render(), 40); // 25fps
     }
 }
 
@@ -505,57 +493,28 @@ async function main() {
     let entryPoint: number | undefined;
     if (programFile) {
         const content = await fetchFile(programFile);
-        const file = FileParser.parse_rk86_binary(programFile, content);
-        machine.memory.load_file(file);
-        entryPoint = file.entry;
-        console.error(
-            `загружен: ${programFile} (${file.start.toString(16)}-${file.end.toString(16)}, G${file.entry.toString(16)})`,
-        );
+        const { ok, json } = FileParser.parse(content);
+        if (ok) {
+            rk86_snapshot_restore(json, machine);
+            entryPoint = parseInt(json.cpu.pc);
+            console.error(`загружен образ: ${programFile} (PC=${entryPoint.toString(16)})`);
+        } else {
+            const file = FileParser.parse_rk86_binary(programFile, content);
+            machine.memory.load_file(file);
+            entryPoint = file.entry;
+            console.error(
+                `загружен: ${programFile} (${file.start.toString(16)}-${file.end.toString(16)}, G${file.entry.toString(16)})`,
+            );
+        }
     }
 
     // Setup terminal
     process.stdout.write("\x1b[?25l"); // hide cursor
     process.stdout.write("\x1b[2J"); // clear screen
 
-    // Setup keyboard
     setupKeyboard(keyboard);
-
-    // Start terminal renderer
-    const termScreen = new TerminalScreen(machine);
-
-    // Hook screen geometry changes from the real Screen to our terminal renderer
-    const origSetGeometry = machine.screen.set_geometry.bind(machine.screen);
-    machine.screen.set_geometry = (width: number, height: number) => {
-        origSetGeometry(width, height);
-        termScreen.width = width;
-        termScreen.height = height;
-    };
-
-    const origSetVideoMemory = machine.screen.set_video_memory.bind(machine.screen);
-    machine.screen.set_video_memory = (base: number) => {
-        origSetVideoMemory(base);
-        termScreen.video_memory_base = base;
-    };
-
-    // Stub canvas methods on the Screen — we render via terminal instead
-    const noopCtx = {
-        imageSmoothingEnabled: false,
-        fillStyle: "",
-        fillRect() {},
-        drawImage() {},
-        clearRect() {},
-    };
-    machine.screen.ctx = noopCtx as unknown as CanvasRenderingContext2D;
-    machine.screen.init = () => {
-        machine.screen.ctx = noopCtx as unknown as CanvasRenderingContext2D;
-    };
-    machine.screen.draw_screen = () => {}; // we render ourselves
-    machine.screen.draw_cursor = () => {}; // skip canvas cursor drawing
-    // flip_cursor still runs to toggle cursor_state for our terminal renderer
-    machine.screen.start();
-
+    machine.screen.start(new TerminalRenderer());
     machine.runner.execute();
-    termScreen.start();
 
     // Autorun loaded file after monitor initializes
     if (entryPoint !== undefined && !loadOnly) {

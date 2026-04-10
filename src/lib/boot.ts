@@ -9,6 +9,7 @@ import type { SequenceAction } from "./rk86_keyboard_injector.js";
 import { convert_keyboard_sequence } from "./rk86_keyboard_injector.js";
 import type { Machine, MachineBuilder } from "./rk86_machine.js";
 import { Memory } from "./rk86_memory.js";
+import { CanvasRenderer } from "./rk86_renderer.js";
 import { Runner } from "./rk86_runner.js";
 import { Screen } from "./rk86_screen.js";
 import { rk86_snapshot, rk86_snapshot_restore } from "./rk86_snapshot.js";
@@ -353,7 +354,7 @@ export async function main(host: HostCallbacks) {
     machine.memory.load_file(monitor);
     console.log("монитор загружен в память");
 
-    machine.screen.start();
+    machine.screen.start(new CanvasRenderer());
     console.log("экран запущен");
 
     const url = window.location.href;

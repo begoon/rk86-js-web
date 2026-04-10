@@ -7,6 +7,7 @@ import { Keyboard } from "./rk86_keyboard.js";
 import { rk86_font_image } from "./rk86_font.js";
 import * as FileParser from "./rk86_file_parser.js";
 import { Memory } from "./rk86_memory.js";
+import { CanvasRenderer } from "./rk86_renderer.js";
 import { Runner } from "./rk86_runner.js";
 import { Screen } from "./rk86_screen.js";
 import { Tape } from "./rk86_tape.js";
@@ -136,7 +137,7 @@ export class Radio86Emulator extends HTMLElement {
         const monitorFile = FileParser.parse_rk86_binary(monitor, monitorContent);
         machine.memory.load_file(monitorFile);
 
-        machine.screen.start();
+        machine.screen.start(new CanvasRenderer());
 
         // 1:1 pixel mapping unless scale="auto"
         if (scale !== "auto") {

@@ -34,8 +34,8 @@
         "modifiers": "0xFF"
     },
     "screen": {
-        "scale_x": 2,
-        "scale_y": 2,
+        "scale_x": 1,
+        "scale_y": 1,
         "width": 78,
         "height": 30,
         "cursor_state": 0,

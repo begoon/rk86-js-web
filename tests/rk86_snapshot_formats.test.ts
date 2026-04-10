@@ -9,8 +9,6 @@ import { Memory } from "../src/lib/rk86_memory.js";
 import { Screen } from "../src/lib/rk86_screen.js";
 import { rk86_snapshot_restore } from "../src/lib/rk86_snapshot.js";
 
-globalThis.Image = function () {} as any;
-
 const io = {
     input: (_port: number): number => 0,
     output: (_port: number, _value: number): void => {},
@@ -18,22 +16,8 @@ const io = {
 };
 
 function createMachine(): Machine {
-    const fakeCtx = {
-        imageSmoothingEnabled: true,
-        fillStyle: "",
-        fillRect() {},
-        drawImage() {},
-        clearRect() {},
-    };
-    const fakeCanvas = { getContext: () => fakeCtx, width: 0, height: 0 };
-
     const keyboard = new Keyboard();
     const ui = {
-        canvas: fakeCanvas,
-        resize_canvas(_w: number, _h: number) {
-            fakeCanvas.width = _w;
-            fakeCanvas.height = _h;
-        },
         update_screen_geometry() {},
         update_video_memory_address() {},
     };
@@ -47,7 +31,6 @@ function createMachine(): Machine {
 
     const screen = new Screen(stub);
     stub.screen = screen;
-    screen.init();
 
     return stub as Machine;
 }
