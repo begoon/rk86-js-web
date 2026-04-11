@@ -3112,7 +3112,7 @@ class Runner {
 
 // src/lib/rk86_screen.ts
 class Screen {
-  static #update_rate = 25;
+  static #update_rate = 40;
   machine;
   cursor_rate;
   scale_x;
