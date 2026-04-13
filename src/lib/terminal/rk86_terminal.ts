@@ -1,9 +1,10 @@
 // Terminal-based RK86 emulator — renders the screen as Unicode text in a terminal.
 // Usage: bun src/lib/rk86_terminal.ts [program.GAM]
 
+import { asm } from "asm8080";
 import { existsSync } from "node:fs";
-import pkg from "../../../packages/rk86/package.json";
 import { readFile } from "node:fs/promises";
+import pkg from "../../../packages/rk86/package.json";
 import { hex16 } from "../core/hex.js";
 import { I8080 } from "../core/i8080.js";
 import * as FileParser from "../core/rk86_file_parser.js";
@@ -425,6 +426,7 @@ function printHelp() {
   -l                       список файлов из каталога
   -m <файл>                монитор (по умолчанию: встроенный mon32.bin)
   -p                       загрузить файл без запуска
+  -g <адрес>               адрес запуска (несовместим с -p)
   --exit-halt              выход при выполнении HLT
   --exit-address [адрес]   выход при переходе на адрес (по умолчанию: 0xFFFE)
 
@@ -436,6 +438,8 @@ function printHelp() {
   bunx rk86 --exit-halt prog.bin     выход при HLT
   bunx rk86 --exit-address prog.bin  выход при JMP FFFEh
   bunx rk86 -l                       список известных файлов
+  bunx rk86 --exit-halt prog.asm     собрать и запустить .asm файл
+  bunx rk86 -g 0x100 prog.bin        запуск с адреса 100h
 
 Управление:
   Ctrl+C    выход`);
@@ -505,6 +509,11 @@ async function main() {
     }
 
     const loadOnly = flag(args, "-p");
+    const goAddr = arg(args, "-g", undefined, /^0x[0-9a-fA-F]+$/i, (v) => parseInt(v, 16)) as number | undefined;
+    if (loadOnly && goAddr !== undefined) {
+        console.error("ошибка: -p и -g несовместимы");
+        process.exit(1);
+    }
     const exitOnHalt = flag(args, "--exit-halt");
     const exitAddrValue = arg(args, "--exit-address", "0xFFFE", /^0x[0-9a-fA-F]+$/i, (v) => parseInt(v, 16)) as
         | number
@@ -541,18 +550,42 @@ async function main() {
     let entryPoint: number | undefined;
     let loadInfo = "";
     if (programFile) {
-        const content = await fetchFile(programFile);
-        const { ok, json } = FileParser.parse(content);
-        if (ok) {
-            rk86_snapshot_restore(json, machine);
-            entryPoint = parseInt(json.cpu.pc);
-            loadInfo = `загружен: ${programFile} (PC=${hex16(entryPoint)})`;
+        const ext = FileParser.file_ext(programFile).toLowerCase();
+        if (ext === "asm") {
+            // Assemble on the fly
+            const source = (await readFile(programFile, "utf-8")) as string;
+            const sections = asm(source);
+            if (sections.length === 0) {
+                console.error("ошибка: ассемблер не вернул секций");
+                process.exit(1);
+            }
+            const lines: string[] = [];
+            for (const section of sections) {
+                const data = section.data as number[];
+                for (let i = 0; i < data.length; i++) {
+                    machine.memory.write(section.start + i, data[i]);
+                }
+                const name = section.name ? ` [${section.name}]` : "";
+                lines.push(`${hex16(section.start)}-${hex16(section.end)}${name} (${data.length} байт)`);
+            }
+            entryPoint = goAddr ?? sections[0].start;
+            loadInfo = `собран: ${programFile}\n` + lines.join("\n") + `\nзапуск: G${hex16(entryPoint)}`;
         } else {
-            const file = FileParser.parse_rk86_binary(programFile, content);
-            machine.memory.load_file(file);
-            entryPoint = file.entry;
-            loadInfo = `загружен: ${programFile}` + ` (${hex16(file.start)}-${hex16(file.end)}, G${hex16(file.entry)})`;
+            const content = await fetchFile(programFile);
+            const { ok, json } = FileParser.parse(content);
+            if (ok) {
+                rk86_snapshot_restore(json, machine);
+                entryPoint = parseInt(json.cpu.pc);
+                loadInfo = `загружен: ${programFile} (PC=${hex16(entryPoint)})`;
+            } else {
+                const file = FileParser.parse_rk86_binary(programFile, content);
+                machine.memory.load_file(file);
+                entryPoint = file.entry;
+                loadInfo =
+                    `загружен: ${programFile}` + ` (${hex16(file.start)}-${hex16(file.end)}, G${hex16(file.entry)})`;
+            }
         }
+        if (goAddr !== undefined) entryPoint = goAddr;
     }
 
     // Setup terminal
@@ -567,21 +600,28 @@ async function main() {
         exitOnHalt || exitAddr
             ? () => {
                   renderer.update();
-                  console.log();
-                  console.log("программа завершила работу на", hex16(machine.cpu.pc));
-                  process.exit(0);
+                  setTimeout(() => {
+                      console.log();
+                      console.log("программа завершила работу на", hex16(machine.cpu.pc));
+                      process.exit(0);
+                  }, 1000);
               }
             : undefined;
 
+    const armed = { value: entryPoint === undefined };
     machine.runner.execute({
         terminate_address: exitAddr ? exitAddrValue : undefined,
         exit_on_halt: exitOnHalt,
         on_terminate: onTerminate,
+        armed,
     });
 
     // Autorun loaded file after monitor initializes
     if (entryPoint !== undefined && !loadOnly) {
-        setTimeout(() => machine.cpu.jump(entryPoint!), 500);
+        setTimeout(() => {
+            machine.cpu.jump(entryPoint!);
+            armed.value = true;
+        }, 500);
     }
 
     // Cleanup on exit

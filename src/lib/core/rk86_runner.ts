@@ -5,6 +5,7 @@ export interface ExecuteOptions {
     terminate_address?: number;
     on_terminate?: () => void;
     exit_on_halt?: boolean;
+    armed?: { value: boolean };
 }
 
 export class Runner {
@@ -58,7 +59,7 @@ export class Runner {
     }
 
     execute(options: ExecuteOptions = {}) {
-        const { terminate_address, on_terminate, exit_on_halt } = options;
+        const { terminate_address, on_terminate, exit_on_halt, armed } = options;
         clearTimeout(this.execute_timer);
         if (!this.paused) {
             let batch_ticks = 0;
@@ -85,6 +86,7 @@ export class Runner {
                     this.machine.ui.on_visualizer_hit(this.machine.memory.read_raw(this.machine.cpu.pc));
                 }
                 batch_instructions += 1;
+                if (armed?.value === false) continue;
                 if (terminate_address !== undefined && this.machine.cpu.pc === terminate_address) {
                     on_terminate?.();
                     return;
