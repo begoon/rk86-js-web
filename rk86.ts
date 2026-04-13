@@ -1587,12 +1587,400 @@ var init_catalog_data = __esm(() => {
   ];
 });
 
+// node_modules/asm8080/dist/asm8.js
+var REG8 = {
+  B: 0,
+  C: 1,
+  D: 2,
+  E: 3,
+  H: 4,
+  L: 5,
+  M: 6,
+  A: 7
+};
+var REG_PAIR = {
+  B: 0,
+  D: 1,
+  H: 2,
+  SP: 3
+};
+var REG_PAIR_PUSH = {
+  B: 0,
+  D: 1,
+  H: 2,
+  PSW: 3
+};
+var IMPLIED = {
+  NOP: 0,
+  HLT: 118,
+  RET: 201,
+  XCHG: 235,
+  EI: 251,
+  DI: 243,
+  CMA: 47,
+  STC: 55,
+  CMC: 63,
+  DAA: 39,
+  RLC: 7,
+  RRC: 15,
+  RAL: 23,
+  RAR: 31,
+  PCHL: 233,
+  SPHL: 249,
+  XTHL: 227,
+  RNZ: 192,
+  RZ: 200,
+  RNC: 208,
+  RC: 216,
+  RPO: 224,
+  RPE: 232,
+  RP: 240,
+  RM: 248
+};
+var ALU_REG = {
+  ADD: 128,
+  ADC: 136,
+  SUB: 144,
+  SBB: 152,
+  ANA: 160,
+  XRA: 168,
+  ORA: 176,
+  CMP: 184
+};
+var ALU_IMM = {
+  ADI: 198,
+  ACI: 206,
+  SUI: 214,
+  SBI: 222,
+  ANI: 230,
+  XRI: 238,
+  ORI: 246,
+  CPI: 254
+};
+var ADDR16 = {
+  JMP: 195,
+  JNZ: 194,
+  JZ: 202,
+  JNC: 210,
+  JC: 218,
+  JPO: 226,
+  JPE: 234,
+  JP: 242,
+  JM: 250,
+  CALL: 205,
+  CNZ: 196,
+  CZ: 204,
+  CNC: 212,
+  CC: 220,
+  CPO: 228,
+  CPE: 236,
+  CP: 244,
+  CM: 252,
+  LDA: 58,
+  STA: 50,
+  LHLD: 42,
+  SHLD: 34
+};
+function instrSize(m) {
+  if (m in IMPLIED)
+    return 1;
+  if (m in ALU_REG)
+    return 1;
+  if (m === "MOV" || m === "INR" || m === "DCR")
+    return 1;
+  if (m === "PUSH" || m === "POP")
+    return 1;
+  if (m === "DAD" || m === "INX" || m === "DCX")
+    return 1;
+  if (m === "LDAX" || m === "STAX")
+    return 1;
+  if (m === "RST")
+    return 1;
+  if (m === "MVI")
+    return 2;
+  if (m in ALU_IMM)
+    return 2;
+  if (m === "IN" || m === "OUT")
+    return 2;
+  if (m === "LXI")
+    return 3;
+  if (m in ADDR16)
+    return 3;
+  throw new Error(`unknown mnemonic: ${m}`);
+}
+function stripComment(line) {
+  let inQ = false;
+  let qc = "";
+  for (let i = 0;i < line.length; i++) {
+    const c = line[i];
+    if (inQ) {
+      if (c === qc)
+        inQ = false;
+    } else if (c === '"' || c === "'") {
+      inQ = true;
+      qc = c;
+    } else if (c === ";")
+      return line.slice(0, i);
+  }
+  return line;
+}
+function splitOperands(s) {
+  const r = [];
+  let current = "";
+  let inQ = false;
+  let qc = "";
+  for (const c of s) {
+    if (inQ) {
+      current += c;
+      if (c === qc)
+        inQ = false;
+    } else if (c === '"' || c === "'") {
+      inQ = true;
+      qc = c;
+      current += c;
+    } else if (c === ",") {
+      r.push(current.trim());
+      current = "";
+    } else
+      current += c;
+  }
+  if (current.trim())
+    r.push(current.trim());
+  return r;
+}
+function parseLine(line) {
+  let s = stripComment(line).trim();
+  if (!s)
+    return { operands: [] };
+  let label;
+  const ci = s.indexOf(":");
+  if (ci > 0 && /^[A-Za-z_]\w*$/.test(s.slice(0, ci).trim())) {
+    label = s.slice(0, ci).trim();
+    s = s.slice(ci + 1).trim();
+  }
+  if (!s)
+    return { label, operands: [] };
+  const si = s.search(/\s/);
+  const first = si < 0 ? s : s.slice(0, si);
+  const rest = si < 0 ? "" : s.slice(si).trim();
+  if (!label && rest) {
+    const parts = rest.split(/\s+/);
+    if (parts[0].toUpperCase() === "EQU") {
+      return {
+        label: first,
+        mnemonic: "EQU",
+        operands: [parts.slice(1).join(" ")],
+        isEqu: true
+      };
+    }
+  }
+  return { label, mnemonic: first, operands: rest ? splitOperands(rest) : [] };
+}
+function evalAtom(s, symbols) {
+  s = s.trim();
+  if (s.length === 3 && s[0] === "'" && s[2] === "'")
+    return s.charCodeAt(1);
+  if (/^[0-9][0-9A-Fa-f]*[hH]$/.test(s))
+    return parseInt(s.slice(0, -1), 16);
+  if (/^[0-9]+$/.test(s))
+    return parseInt(s, 10);
+  const k = s.toUpperCase();
+  if (symbols.has(k))
+    return symbols.get(k);
+  throw new Error(`unknown symbol: ${s}`);
+}
+function evalExpr(expr, symbols) {
+  expr = expr.trim();
+  const tokens = [];
+  const ops = ["+"];
+  let current = "";
+  for (const c of expr) {
+    if ((c === "+" || c === "-") && current.trim()) {
+      tokens.push(current.trim());
+      ops.push(c);
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  if (current.trim())
+    tokens.push(current.trim());
+  let r = 0;
+  for (let i = 0;i < tokens.length; i++) {
+    const v = evalAtom(tokens[i], symbols);
+    r = ops[i] === "+" ? r + v : r - v;
+  }
+  return r & 65535;
+}
+function encode(m, ops, symbols) {
+  if (m in IMPLIED)
+    return [IMPLIED[m]];
+  if (m in ALU_REG)
+    return [ALU_REG[m] | REG8[ops[0].toUpperCase()]];
+  if (m in ALU_IMM)
+    return [ALU_IMM[m], evalExpr(ops[0], symbols) & 255];
+  if (m in ADDR16) {
+    const v = evalExpr(ops[0], symbols);
+    return [ADDR16[m], v & 255, v >> 8 & 255];
+  }
+  if (m === "MOV")
+    return [64 | REG8[ops[0].toUpperCase()] << 3 | REG8[ops[1].toUpperCase()]];
+  if (m === "MVI") {
+    const v = evalExpr(ops[1], symbols);
+    return [6 | REG8[ops[0].toUpperCase()] << 3, v & 255];
+  }
+  if (m === "INR")
+    return [4 | REG8[ops[0].toUpperCase()] << 3];
+  if (m === "DCR")
+    return [5 | REG8[ops[0].toUpperCase()] << 3];
+  if (m === "LXI") {
+    const v = evalExpr(ops[1], symbols);
+    return [1 | REG_PAIR[ops[0].toUpperCase()] << 4, v & 255, v >> 8 & 255];
+  }
+  if (m === "DAD")
+    return [9 | REG_PAIR[ops[0].toUpperCase()] << 4];
+  if (m === "INX")
+    return [3 | REG_PAIR[ops[0].toUpperCase()] << 4];
+  if (m === "DCX")
+    return [11 | REG_PAIR[ops[0].toUpperCase()] << 4];
+  if (m === "PUSH")
+    return [197 | REG_PAIR_PUSH[ops[0].toUpperCase()] << 4];
+  if (m === "POP")
+    return [193 | REG_PAIR_PUSH[ops[0].toUpperCase()] << 4];
+  if (m === "LDAX")
+    return [10 | REG_PAIR[ops[0].toUpperCase()] << 4];
+  if (m === "STAX")
+    return [2 | REG_PAIR[ops[0].toUpperCase()] << 4];
+  if (m === "IN")
+    return [219, evalExpr(ops[0], symbols) & 255];
+  if (m === "OUT")
+    return [211, evalExpr(ops[0], symbols) & 255];
+  if (m === "RST") {
+    const n = evalExpr(ops[0], symbols);
+    return [199 | n << 3];
+  }
+  throw new Error(`cannot encode: ${m} ${ops.join(", ")}`);
+}
+function dbBytes(operands, symbols) {
+  const out = [];
+  for (const op of operands) {
+    if (op.startsWith('"') && op.endsWith('"') || op.startsWith("'") && op.endsWith("'")) {
+      for (const ch of op.slice(1, -1))
+        out.push(ch.charCodeAt(0));
+    } else {
+      out.push(evalExpr(op, symbols) & 255);
+    }
+  }
+  return out;
+}
+function dwBytes(operands, symbols) {
+  const out = [];
+  for (const op of operands) {
+    const v = evalExpr(op, symbols) & 65535;
+    out.push(v & 255, v >> 8 & 255);
+  }
+  return out;
+}
+function countDb(operands) {
+  let n = 0;
+  for (const op of operands) {
+    if (op.startsWith('"') && op.endsWith('"') || op.startsWith("'") && op.endsWith("'"))
+      n += op.length - 2;
+    else
+      n++;
+  }
+  return n;
+}
+function asm(source) {
+  const lines = source.split(`
+`);
+  const symbols = new Map;
+  let pc = 0;
+  for (const line of lines) {
+    const parts = parseLine(line);
+    if (parts.label) {
+      if (parts.isEqu) {
+        symbols.set(parts.label.toUpperCase(), evalExpr(parts.operands[0], symbols));
+        continue;
+      }
+      symbols.set(parts.label.toUpperCase(), pc);
+    }
+    if (!parts.mnemonic)
+      continue;
+    const m = parts.mnemonic.toUpperCase();
+    if (m === "EQU")
+      continue;
+    if (m === "ORG") {
+      pc = evalExpr(parts.operands[0], symbols);
+      continue;
+    }
+    if (m === "SECTION")
+      continue;
+    if (m === "END")
+      break;
+    if (m === "DB") {
+      pc += countDb(parts.operands);
+      continue;
+    }
+    if (m === "DW") {
+      pc += parts.operands.length * 2;
+      continue;
+    }
+    pc += instrSize(m);
+  }
+  const sections = [];
+  let current = null;
+  const sectionNames = new Set;
+  for (const line of lines) {
+    const parts = parseLine(line);
+    if (parts.isEqu || !parts.mnemonic)
+      continue;
+    const m = parts.mnemonic.toUpperCase();
+    if (m === "EQU")
+      continue;
+    if (m === "ORG") {
+      if (current && current.data.length) {
+        current.end = current.start + current.data.length - 1;
+        sections.push(current);
+      }
+      const addr = evalExpr(parts.operands[0], symbols);
+      current = { start: addr, end: addr, data: [] };
+      continue;
+    }
+    if (m === "SECTION") {
+      if (!current)
+        throw new Error("SECTION before ORG");
+      const name = parts.operands[0];
+      if (!name)
+        throw new Error("SECTION requires a name");
+      if (sectionNames.has(name.toUpperCase()))
+        throw new Error(`duplicate section name: ${name}`);
+      sectionNames.add(name.toUpperCase());
+      current.name = name;
+      continue;
+    }
+    if (m === "END")
+      break;
+    if (!current)
+      throw new Error("code before ORG");
+    const bytes = m === "DB" ? dbBytes(parts.operands, symbols) : m === "DW" ? dwBytes(parts.operands, symbols) : encode(m, parts.operands, symbols);
+    current.data.push(...bytes);
+  }
+  if (current && current.data.length) {
+    current.end = current.start + current.data.length - 1;
+    sections.push(current);
+  }
+  return sections;
+}
+if (false) {}
+
 // src/lib/terminal/rk86_terminal.ts
 import { existsSync } from "fs";
+import { readFile } from "fs/promises";
 // packages/rk86/package.json
 var package_default = {
   name: "rk86",
-  version: "2.0.12",
+  version: "2.0.14",
   description: "\u042D\u043C\u0443\u043B\u044F\u0442\u043E\u0440 \u0420\u0430\u0434\u0438\u043E-86\u0420\u041A (Intel 8080) \u0434\u043B\u044F \u0442\u0435\u0440\u043C\u0438\u043D\u0430\u043B\u0430",
   bin: {
     rk86: "rk86.js"
@@ -1613,9 +2001,6 @@ var package_default = {
     url: "https://github.com/begoon/rk86-js-web"
   }
 };
-
-// src/lib/terminal/rk86_terminal.ts
-import { readFile } from "fs/promises";
 
 // src/lib/core/hex.ts
 function hex(v, prefix) {
@@ -3032,7 +3417,7 @@ class Runner {
     }
   }
   execute(options = {}) {
-    const { terminate_address, on_terminate, exit_on_halt } = options;
+    const { terminate_address, on_terminate, exit_on_halt, armed } = options;
     clearTimeout(this.execute_timer);
     if (!this.paused) {
       let batch_ticks = 0;
@@ -3060,6 +3445,8 @@ class Runner {
           this.machine.ui.on_visualizer_hit(this.machine.memory.read_raw(this.machine.cpu.pc));
         }
         batch_instructions += 1;
+        if (armed?.value === false)
+          continue;
         if (terminate_address !== undefined && this.machine.cpu.pc === terminate_address) {
           on_terminate?.();
           return;
@@ -3654,6 +4041,7 @@ function printHelp() {
   -l                       \u0441\u043F\u0438\u0441\u043E\u043A \u0444\u0430\u0439\u043B\u043E\u0432 \u0438\u0437 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430
   -m <\u0444\u0430\u0439\u043B>                \u043C\u043E\u043D\u0438\u0442\u043E\u0440 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u044B\u0439 mon32.bin)
   -p                       \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0444\u0430\u0439\u043B \u0431\u0435\u0437 \u0437\u0430\u043F\u0443\u0441\u043A\u0430
+  -g <\u0430\u0434\u0440\u0435\u0441>               \u0430\u0434\u0440\u0435\u0441 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 (\u043D\u0435\u0441\u043E\u0432\u043C\u0435\u0441\u0442\u0438\u043C \u0441 -p)
   --exit-halt              \u0432\u044B\u0445\u043E\u0434 \u043F\u0440\u0438 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0438 HLT
   --exit-address [\u0430\u0434\u0440\u0435\u0441]   \u0432\u044B\u0445\u043E\u0434 \u043F\u0440\u0438 \u043F\u0435\u0440\u0435\u0445\u043E\u0434\u0435 \u043D\u0430 \u0430\u0434\u0440\u0435\u0441 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: 0xFFFE)
 
@@ -3665,6 +4053,8 @@ function printHelp() {
   bunx rk86 --exit-halt prog.bin     \u0432\u044B\u0445\u043E\u0434 \u043F\u0440\u0438 HLT
   bunx rk86 --exit-address prog.bin  \u0432\u044B\u0445\u043E\u0434 \u043F\u0440\u0438 JMP FFFEh
   bunx rk86 -l                       \u0441\u043F\u0438\u0441\u043E\u043A \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0445 \u0444\u0430\u0439\u043B\u043E\u0432
+  bunx rk86 --exit-halt prog.asm     \u0441\u043E\u0431\u0440\u0430\u0442\u044C \u0438 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C .asm \u0444\u0430\u0439\u043B
+  bunx rk86 -g 0x100 prog.bin        \u0437\u0430\u043F\u0443\u0441\u043A \u0441 \u0430\u0434\u0440\u0435\u0441\u0430 100h
 
 \u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435:
   Ctrl+C    \u0432\u044B\u0445\u043E\u0434`);
@@ -3715,6 +4105,11 @@ async function main() {
     process.exit(0);
   }
   const loadOnly = flag(args, "-p");
+  const goAddr = arg(args, "-g", undefined, /^0x[0-9a-fA-F]+$/i, (v) => parseInt(v, 16));
+  if (loadOnly && goAddr !== undefined) {
+    console.error("\u043E\u0448\u0438\u0431\u043A\u0430: -p \u0438 -g \u043D\u0435\u0441\u043E\u0432\u043C\u0435\u0441\u0442\u0438\u043C\u044B");
+    process.exit(1);
+  }
   const exitOnHalt = flag(args, "--exit-halt");
   const exitAddrValue = arg(args, "--exit-address", "0xFFFE", /^0x[0-9a-fA-F]+$/i, (v) => parseInt(v, 16));
   const exitAddr = exitAddrValue !== undefined;
@@ -3741,18 +4136,44 @@ async function main() {
   let entryPoint;
   let loadInfo = "";
   if (programFile) {
-    const content = await fetchFile(programFile);
-    const { ok, json } = parse(content);
-    if (ok) {
-      rk86_snapshot_restore(json, machine);
-      entryPoint = parseInt(json.cpu.pc);
-      loadInfo = `\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D: ${programFile} (PC=${hex16(entryPoint)})`;
+    const ext = file_ext(programFile).toLowerCase();
+    if (ext === "asm") {
+      const source = await readFile(programFile, "utf-8");
+      const sections = asm(source);
+      if (sections.length === 0) {
+        console.error("\u043E\u0448\u0438\u0431\u043A\u0430: \u0430\u0441\u0441\u0435\u043C\u0431\u043B\u0435\u0440 \u043D\u0435 \u0432\u0435\u0440\u043D\u0443\u043B \u0441\u0435\u043A\u0446\u0438\u0439");
+        process.exit(1);
+      }
+      const lines = [];
+      for (const section of sections) {
+        const data = section.data;
+        for (let i = 0;i < data.length; i++) {
+          machine.memory.write(section.start + i, data[i]);
+        }
+        const name = section.name ? ` [${section.name}]` : "";
+        lines.push(`${hex16(section.start)}-${hex16(section.end)}${name} (${data.length} \u0431\u0430\u0439\u0442)`);
+      }
+      entryPoint = goAddr ?? sections[0].start;
+      loadInfo = `\u0441\u043E\u0431\u0440\u0430\u043D: ${programFile}
+` + lines.join(`
+`) + `
+\u0437\u0430\u043F\u0443\u0441\u043A: G${hex16(entryPoint)}`;
     } else {
-      const file = parse_rk86_binary(programFile, content);
-      machine.memory.load_file(file);
-      entryPoint = file.entry;
-      loadInfo = `\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D: ${programFile} (${hex16(file.start)}-${hex16(file.end)}, G${hex16(file.entry)})`;
+      const content = await fetchFile(programFile);
+      const { ok, json } = parse(content);
+      if (ok) {
+        rk86_snapshot_restore(json, machine);
+        entryPoint = parseInt(json.cpu.pc);
+        loadInfo = `\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D: ${programFile} (PC=${hex16(entryPoint)})`;
+      } else {
+        const file = parse_rk86_binary(programFile, content);
+        machine.memory.load_file(file);
+        entryPoint = file.entry;
+        loadInfo = `\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D: ${programFile} (${hex16(file.start)}-${hex16(file.end)}, G${hex16(file.entry)})`;
+      }
     }
+    if (goAddr !== undefined)
+      entryPoint = goAddr;
   }
   process.stdout.write("\x1B[?25l");
   process.stdout.write("\x1B[2J");
@@ -3762,17 +4183,24 @@ async function main() {
   machine.screen.start(renderer);
   const onTerminate = exitOnHalt || exitAddr ? () => {
     renderer.update();
-    console.log();
-    console.log("\u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0430 \u0440\u0430\u0431\u043E\u0442\u0443 \u043D\u0430", hex16(machine.cpu.pc));
-    process.exit(0);
+    setTimeout(() => {
+      console.log();
+      console.log("\u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0430 \u0440\u0430\u0431\u043E\u0442\u0443 \u043D\u0430", hex16(machine.cpu.pc));
+      process.exit(0);
+    }, 1000);
   } : undefined;
+  const armed = { value: entryPoint === undefined };
   machine.runner.execute({
     terminate_address: exitAddr ? exitAddrValue : undefined,
     exit_on_halt: exitOnHalt,
-    on_terminate: onTerminate
+    on_terminate: onTerminate,
+    armed
   });
   if (entryPoint !== undefined && !loadOnly) {
-    setTimeout(() => machine.cpu.jump(entryPoint), 500);
+    setTimeout(() => {
+      machine.cpu.jump(entryPoint);
+      armed.value = true;
+    }, 500);
   }
   process.on("exit", () => {
     process.stdout.write("\x1B[?25h");
