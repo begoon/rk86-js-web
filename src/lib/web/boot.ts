@@ -141,7 +141,39 @@ function filenameURL(name: string): string {
 
 const basename = (url: string): string => url.split("/").at(-1) || url;
 
+export interface DecodedDataURL {
+    name: string;
+    content: number[];
+}
+
+export function decode_data_url(url: string): DecodedDataURL | undefined {
+    if (!url.startsWith("data:")) return undefined;
+    const comma = url.indexOf(",");
+    if (comma < 0) return undefined;
+    const params = url.substring(5, comma).split(";");
+    const payload = url.substring(comma + 1);
+    if (!params.includes("base64")) {
+        console.error(`встроенный data URL должен быть base64: ${params.join(";")}`);
+        return undefined;
+    }
+    const nameParam = params.find((p) => p.startsWith("name="));
+    const name = nameParam ? decodeURIComponent(nameParam.slice(5)) : "inline.bin";
+    try {
+        const normalized = decodeURIComponent(payload).replace(/-/g, "+").replace(/_/g, "/");
+        const binary = atob(normalized);
+        const bytes = new Array<number>(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        console.log(`декодирован встроенный data URL [${name}], длиной ${bytes.length} байт`);
+        return { name, content: bytes };
+    } catch (error) {
+        console.error(`ошибка декодирования data URL: ${error}`);
+        return undefined;
+    }
+}
+
 async function fetch_file(name: string): Promise<number[] | undefined> {
+    const inline = decode_data_url(name);
+    if (inline) return inline.content;
     const url = filenameURL(name);
     console.log(`скачиваем файл [${url}]`);
     try {
@@ -343,6 +375,11 @@ export async function main(host: HostCallbacks) {
     }
 
     async function loadAutoexecFile(name: string): Promise<void> {
+        const inline = decode_data_url(name);
+        if (inline) {
+            parseAndPlaceFile(machine, simulate_keyboard, inline.name, inline.content);
+            return;
+        }
         const content = await fetch_file(name);
         if (!content) return;
         parseAndPlaceFile(machine, simulate_keyboard, name, content);
@@ -362,8 +399,8 @@ export async function main(host: HostCallbacks) {
     const url = window.location.href;
 
     let match;
-    const auto_run = (match = url.match(/(file|run)=([^&]+)/)) ? match[2] : null;
-    const auto_load = (match = url.match(/load=([^&]+)/)) ? match[1] : null;
+    const auto_run = (match = url.match(/(file|run)=([^&]+)/)) ? decodeURIComponent(match[2]) : null;
+    const auto_load = (match = url.match(/load=([^&]+)/)) ? decodeURIComponent(match[1]) : null;
 
     if (auto_run) {
         console.log(`автозагрузка и запуск файла ${auto_run}`);

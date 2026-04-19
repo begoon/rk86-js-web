@@ -67,4 +67,5 @@ All four are auto-generated via `svelte.config.js` on every build/dev.
 - Icon buttons in toolbar are non-focusable (`tabindex=-1`) to prevent accidental activation via Enter/Space
 - Dialogs blur active element on close to prevent focus returning to triggering button
 - `BASE_PATH` env var sets deployment base path (e.g. `BASE_PATH=/alpha bun run build`)
+- URL auto-load: `?file=` / `?run=` (load + run) and `?load=` (load only) in `boot.ts`. Value can be a catalog name, absolute URL, or `data:[;name=<filename>];base64,<payload>` data URL. `name=` hint drives extension-based parser selection; defaults to `inline.bin`. URL values are `decodeURIComponent`-ed before decoding; URL-safe base64 (`-_`) is normalized to standard (`+/`)
 - All text in UI is in Russian
