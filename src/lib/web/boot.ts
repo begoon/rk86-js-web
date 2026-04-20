@@ -345,6 +345,7 @@ export async function main(host: HostCallbacks) {
         font: rk86_font_image(),
         keyboard,
         io,
+        log: (...args: unknown[]) => console.log(...args),
     };
     const machine = machineBuilder as Machine;
 
@@ -442,7 +443,18 @@ export async function main(host: HostCallbacks) {
     };
 
     machine.runLoadedFile = () => {
-        if (ui.selectedFile) machine.cpu.jump(ui.selectedFile.entry);
+        if (!ui.selectedFile) return;
+        // Route through the monitor's G command instead of jumping the CPU
+        // directly: a direct jump can leave the monitor mid-prompt-loop with
+        // inconsistent keyboard state that the program then inherits.
+        const hex = ui.selectedFile.entry.toString(16).toUpperCase();
+        const digitKeys = [...hex].map((c) => (c >= "0" && c <= "9" ? `Digit${c}` : `Key${c}`));
+        const sequence: SequenceAction[] = [
+            { keys: "KeyG", duration: 100, action: "press" },
+            ...digitKeys.map((k) => ({ keys: k, duration: 100, action: "press" as const })),
+            { keys: "Enter", duration: 100, action: "press" },
+        ];
+        simulate_keyboard(sequence);
     };
 
     machine.uploadFile = async (file: File) => {

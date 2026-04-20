@@ -115,6 +115,7 @@ export class Radio86Emulator extends HTMLElement {
             font: rk86_font_image(),
             keyboard,
             io,
+            log: (...args: unknown[]) => console.log(...args),
         };
         const machine = machineBuilder as Machine;
         this.machine = machine;

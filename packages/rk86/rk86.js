@@ -2277,7 +2277,7 @@ import { readFile, writeFile } from "fs/promises";
 // packages/rk86/package.json
 var package_default = {
   name: "rk86",
-  version: "2.0.16",
+  version: "2.0.18",
   description: "\u042D\u043C\u0443\u043B\u044F\u0442\u043E\u0440 \u0420\u0430\u0434\u0438\u043E-86\u0420\u041A (Intel 8080) \u0434\u043B\u044F \u0442\u0435\u0440\u043C\u0438\u043D\u0430\u043B\u0430",
   bin: {
     rk86: "rk86.js"
@@ -3707,16 +3707,19 @@ class Runner {
   init_sound(enabled) {
     if (enabled && this.sound == null && this.sound_factory) {
       this.sound = this.sound_factory();
-      console.log("\u0437\u0432\u0443\u043A \u0432\u043A\u043B\u044E\u0447\u0435\u043D");
+      this.machine.log("\u0437\u0432\u0443\u043A \u0432\u043A\u043B\u044E\u0447\u0435\u043D");
     } else if (!enabled) {
       this.sound = null;
-      console.log("\u0437\u0432\u0443\u043A \u0432\u044B\u043A\u043B\u044E\u0447\u0435\u043D");
+      this.machine.log("\u0437\u0432\u0443\u043A \u0432\u044B\u043A\u043B\u044E\u0447\u0435\u043D");
     }
   }
   execute(options = {}) {
-    const { terminate_address, on_terminate, exit_on_halt, armed } = options;
+    const { terminate_address, on_terminate, exit_on_halt, on_batch_complete, turbo } = options;
     clearTimeout(this.execute_timer);
-    if (!this.paused) {
+    const bursts = turbo ? 100 : 1;
+    for (let burst = 0;burst < bursts; burst++) {
+      if (this.paused)
+        break;
       let batch_ticks = 0;
       let batch_instructions = 0;
       while (batch_ticks < this.TICK_PER_MS) {
@@ -3742,8 +3745,6 @@ class Runner {
           this.machine.ui.on_visualizer_hit(this.machine.memory.read_raw(this.machine.cpu.pc));
         }
         batch_instructions += 1;
-        if (armed?.value === false)
-          continue;
         if (terminate_address !== undefined && this.machine.cpu.pc === terminate_address) {
           on_terminate?.();
           return;
@@ -3758,8 +3759,10 @@ class Runner {
       this.previous_batch_time = now;
       this.instructions_per_millisecond = batch_instructions / elapsed;
       this.ticks_per_millisecond = batch_ticks / elapsed;
+      this.machine.screen.tick_cursor(this.total_ticks, this.FREQ * (this.machine.screen.cursor_rate / 1000));
+      on_batch_complete?.();
     }
-    this.execute_timer = setTimeout(() => this.execute(options), 10);
+    this.execute_timer = setTimeout(() => this.execute(options), turbo ? 0 : 10);
   }
   pause() {
     this.paused = true;
@@ -3845,8 +3848,14 @@ class Screen {
   start(renderer) {
     this.renderer = renderer;
     this.renderer.connect(this.machine);
-    this.flip_cursor();
     this.render_loop();
+  }
+  last_flip_ticks = 0;
+  tick_cursor(total_ticks, ticks_per_flip) {
+    while (total_ticks - this.last_flip_ticks >= ticks_per_flip) {
+      this.cursor_state = !this.cursor_state;
+      this.last_flip_ticks += ticks_per_flip;
+    }
   }
   render_loop() {
     if (this.ready)
@@ -3862,7 +3871,7 @@ class Screen {
     this.machine.ui.update_screen_geometry(this.width, this.height);
     if (this.last_width === this.width && this.last_height === this.height)
       return;
-    console.log(`\u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D \u0440\u0430\u0437\u043C\u0435\u0440 \u044D\u043A\u0440\u0430\u043D\u0430: ${width} x ${height}`);
+    this.machine.log(`\u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D \u0440\u0430\u0437\u043C\u0435\u0440 \u044D\u043A\u0440\u0430\u043D\u0430: ${width} x ${height}`);
     this.last_width = this.width;
     this.last_height = this.height;
     if (this.last_video_memory_base !== -1)
@@ -3874,7 +3883,7 @@ class Screen {
     this.machine.ui.update_video_memory_address(this.video_memory_base);
     if (this.last_video_memory_base === this.video_memory_base)
       return;
-    console.log(`\u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430 \u0432\u0438\u0434\u0435\u043E\u043F\u0430\u043C\u044F\u0442\u044C \u0441 \u0430\u0434\u0440\u0435\u0441\u0430`, `${hex16(this.video_memory_base)}`, `\u0440\u0430\u0437\u043C\u0435\u0440\u043E\u043C ${hex16(this.video_memory_size)}`);
+    this.machine.log(`\u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430 \u0432\u0438\u0434\u0435\u043E\u043F\u0430\u043C\u044F\u0442\u044C \u0441 \u0430\u0434\u0440\u0435\u0441\u0430`, `${hex16(this.video_memory_base)}`, `\u0440\u0430\u0437\u043C\u0435\u0440\u043E\u043C ${hex16(this.video_memory_size)}`);
     this.last_video_memory_base = this.video_memory_base;
     if (this.last_width !== -1)
       this.ready = true;
@@ -3883,13 +3892,28 @@ class Screen {
     this.cursor_x = x;
     this.cursor_y = y;
   }
-  flip_cursor() {
-    this.cursor_state = !this.cursor_state;
-    setTimeout(() => this.flip_cursor(), this.cursor_rate);
-  }
 }
 
 // src/lib/core/rk86_snapshot.ts
+function rk86_snapshot(machine, version) {
+  const { screen, cpu, keyboard, memory } = machine;
+  const h16 = (n) => "0x" + hex16(n);
+  const snapshot = {
+    id: "rk86",
+    created: new Date().toISOString(),
+    format: "1",
+    emulator: "rk86.ru",
+    version,
+    start: h16(0),
+    end: h16(65535),
+    boot: { keyboard: [] },
+    cpu: cpu.export(),
+    keyboard: keyboard.export(),
+    screen: screen.export(),
+    memory: memory.export()
+  };
+  return JSON.stringify(snapshot, null, 4);
+}
 function rk86_snapshot_restore(snapshot, machine, keys_injector) {
   try {
     const json = typeof snapshot === "string" ? JSON.parse(snapshot) : snapshot;
@@ -4344,15 +4368,19 @@ function printHelp() {
   -m <\u0444\u0430\u0439\u043B>                \u043C\u043E\u043D\u0438\u0442\u043E\u0440 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u044B\u0439 mon32.bin)
   -p                       \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0444\u0430\u0439\u043B \u0431\u0435\u0437 \u0437\u0430\u043F\u0443\u0441\u043A\u0430
   -g <\u0430\u0434\u0440\u0435\u0441>               \u0430\u0434\u0440\u0435\u0441 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 (\u043D\u0435\u0441\u043E\u0432\u043C\u0435\u0441\u0442\u0438\u043C \u0441 -p)
+  -G <\u0430\u0434\u0440\u0435\u0441>                \u0437\u0430\u043F\u0443\u0441\u043A \u0447\u0435\u0440\u0435\u0437 \u043A\u043E\u043C\u0430\u043D\u0434\u0443 G \u043C\u043E\u043D\u0438\u0442\u043E\u0440\u0430 (\u0438\u043D\u044A\u0435\u043A\u0446\u0438\u044F \u043A\u043B\u0430\u0432\u0438\u0448)
   --exit-halt              \u0432\u044B\u0445\u043E\u0434 \u043F\u0440\u0438 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0438 HLT
   --exit-address [\u0430\u0434\u0440\u0435\u0441]   \u0432\u044B\u0445\u043E\u0434 \u043F\u0440\u0438 \u043F\u0435\u0440\u0435\u0445\u043E\u0434\u0435 \u043D\u0430 \u0430\u0434\u0440\u0435\u0441 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: 0xFFFE)
   --headless               \u0431\u0435\u0437 \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u044D\u043A\u0440\u0430\u043D\u0430 (\u0434\u043B\u044F \u0430\u0432\u0442\u043E\u0442\u0435\u0441\u0442\u043E\u0432)
+  --turbo                  \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0431\u0435\u0437 \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u044F \u0441\u043A\u043E\u0440\u043E\u0441\u0442\u0438 (\u0434\u043B\u044F \u0430\u0432\u0442\u043E\u0442\u0435\u0441\u0442\u043E\u0432)
   --timeout <\u0441\u0435\u043A>          \u0432\u044B\u0445\u043E\u0434 \u043F\u043E \u0442\u0430\u0439\u043C\u0430\u0443\u0442\u0443
   --memory <\u0444\u0430\u0439\u043B>          \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043F\u0430\u043C\u044F\u0442\u044C \u0432 \u0444\u0430\u0439\u043B \u043F\u0440\u0438 \u0432\u044B\u0445\u043E\u0434\u0435
   --memory-from <\u0430\u0434\u0440\u0435\u0441>    \u043D\u0430\u0447\u0430\u043B\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438 \u0434\u0430\u043C\u043F\u0430 \u043F\u0430\u043C\u044F\u0442\u0438 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: 0x0000)
   --memory-to <\u0430\u0434\u0440\u0435\u0441>      \u043A\u043E\u043D\u0435\u0446 \u043E\u0431\u043B\u0430\u0441\u0442\u0438 \u0434\u0430\u043C\u043F\u0430 \u043F\u0430\u043C\u044F\u0442\u0438 \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u0435\u043B\u044C\u043D\u043E (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E: 0xFFFF)
   --screen <\u0444\u0430\u0439\u043B>          \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u044D\u043A\u0440\u0430\u043D 78x30 \u043A\u0430\u043A \u0442\u0435\u043A\u0441\u0442 \u043F\u0440\u0438 \u0432\u044B\u0445\u043E\u0434\u0435
+  --snapshot <\u0444\u0430\u0439\u043B>        \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0441\u043D\u0438\u043C\u043E\u043A \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F (JSON) \u043F\u0440\u0438 \u0432\u044B\u0445\u043E\u0434\u0435
   --input <seq>            \u0438\u043D\u044A\u0435\u043A\u0446\u0438\u044F \u043A\u043B\u0430\u0432\u0438\u0448 (\u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E): KeyA,Digit1,Enter,...
+                           \u0442\u043E\u043A\u0435\u043D *N \u0437\u0430\u0434\u0430\u0451\u0442 \u043F\u0430\u0443\u0437\u0443 N \u043C\u0441 (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 *200)
 
 \u041F\u0440\u0438\u043C\u0435\u0440\u044B:
   bunx rk86                          \u0437\u0430\u043F\u0443\u0441\u043A \u043C\u043E\u043D\u0438\u0442\u043E\u0440\u0430
@@ -4424,6 +4452,7 @@ async function main() {
   const exitAddr = exitAddrValue !== undefined;
   const monitorFile_ = arg(args, "-m");
   const headless = flag(args, "--headless");
+  const turbo = flag(args, "--turbo");
   const timeoutSec = arg(args, "--timeout", undefined, /^\d+(\.\d+)?$/, parseFloat);
   const memoryFile = arg(args, "--memory");
   const addrRe = /^(0x)?[0-9a-fA-F]+$/i;
@@ -4431,14 +4460,23 @@ async function main() {
   const memoryFrom = arg(args, "--memory-from", undefined, addrRe, parseAddr) ?? 0;
   const memoryTo = arg(args, "--memory-to", undefined, addrRe, parseAddr) ?? 65535;
   const screenFile = arg(args, "--screen");
-  const inputSeq = arg(args, "--input");
+  const snapshotFile = arg(args, "--snapshot");
+  const goViaMonitor = arg(args, "-G", undefined, addrRe, parseAddr);
+  let inputSeq = arg(args, "--input");
+  if (goViaMonitor !== undefined) {
+    const hex2 = goViaMonitor.toString(16).toUpperCase();
+    const keys = [...hex2].map((c) => c >= "0" && c <= "9" ? `Digit${c}` : `Key${c}`);
+    const gSeq = ["KeyG", ...keys, "Enter"].join(",");
+    inputSeq = inputSeq ? `${inputSeq},${gSeq}` : gSeq;
+  }
   const programFile = args[0];
   const keyboard = new Keyboard;
   const io = new IO;
   const machineBuilder = {
     font: rk86_font_image(),
     keyboard,
-    io
+    io,
+    log: (...args2) => console.log(...args2)
   };
   const machine = machineBuilder;
   machine.ui = new TerminalUI;
@@ -4511,6 +4549,8 @@ async function main() {
       await writeFile(screenFile, dumpScreen(machine));
     if (memoryFile)
       await writeFile(memoryFile, new Uint8Array(machine.memory.buf.slice(memoryFrom, memoryTo + 1)));
+    if (snapshotFile)
+      await writeFile(snapshotFile, rk86_snapshot(machine, package_default.version));
     if (!headless)
       process.stdout.write("\x1B[?25h");
     if (message !== null && !headless) {
@@ -4524,39 +4564,49 @@ async function main() {
       renderer.update();
     setTimeout(() => doExit(`\u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0430 \u0440\u0430\u0431\u043E\u0442\u0443 \u043D\u0430 ${hex16(machine.cpu.pc)}`), headless ? 0 : 1000);
   } : undefined;
-  const armed = { value: entryPoint === undefined };
-  machine.runner.execute({
-    terminate_address: exitAddr ? exitAddrValue : undefined,
-    exit_on_halt: exitOnHalt,
-    on_terminate: onTerminate,
-    armed
-  });
   const armDelayMs = 500;
   if (entryPoint !== undefined && !loadOnly) {
     setTimeout(() => {
       machine.cpu.jump(entryPoint);
-      armed.value = true;
     }, armDelayMs);
   }
+  const tickEvents = [];
   if (inputSeq) {
     const keys = inputSeq.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+    const TICKS_PER_MS = machine.runner.FREQ / 1000;
     const settleMs = armDelayMs + 1000;
     const keyDownMs = 50;
     const keyGapMs = 50;
-    setTimeout(() => {
-      const pressNext = (i) => {
-        if (i >= keys.length)
-          return;
-        const code = keys[i];
-        keyboard.onkeydown(code);
-        setTimeout(() => {
-          keyboard.onkeyup(code);
-          setTimeout(() => pressNext(i + 1), keyGapMs);
-        }, keyDownMs);
-      };
-      pressNext(0);
-    }, settleMs);
+    let t = settleMs * TICKS_PER_MS;
+    for (const token of keys) {
+      if (token.startsWith("*")) {
+        const delayMs = parseInt(token.slice(1), 10);
+        if (!Number.isFinite(delayMs) || delayMs < 0) {
+          console.error(`\u043D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0437\u0430\u0434\u0435\u0440\u0436\u043A\u0430 \u0432 --input: ${token}`);
+          process.exit(1);
+        }
+        t += delayMs * TICKS_PER_MS;
+        continue;
+      }
+      const code = token;
+      tickEvents.push({ at_ticks: t, action: () => keyboard.onkeydown(code) });
+      t += keyDownMs * TICKS_PER_MS;
+      tickEvents.push({ at_ticks: t, action: () => keyboard.onkeyup(code) });
+      t += keyGapMs * TICKS_PER_MS;
+    }
   }
+  machine.runner.execute({
+    terminate_address: exitAddr ? exitAddrValue : undefined,
+    exit_on_halt: exitOnHalt,
+    on_terminate: onTerminate,
+    turbo,
+    on_batch_complete: () => {
+      const now = machine.runner.total_ticks;
+      while (tickEvents.length > 0 && tickEvents[0].at_ticks <= now) {
+        tickEvents.shift().action();
+      }
+    }
+  });
   if (timeoutSec !== undefined) {
     setTimeout(() => doExit(`\u0432\u044B\u0445\u043E\u0434 \u043F\u043E \u0442\u0430\u0439\u043C\u0430\u0443\u0442\u0443 ${timeoutSec}\u0441`), timeoutSec * 1000);
   }

@@ -15,7 +15,7 @@ import { Memory } from "../core/rk86_memory.js";
 import type { Renderer } from "../core/rk86_renderer_interface.js";
 import { Runner } from "../core/rk86_runner.js";
 import { Screen } from "../core/rk86_screen.js";
-import { rk86_snapshot_restore } from "../core/rk86_snapshot.js";
+import { rk86_snapshot, rk86_snapshot_restore } from "../core/rk86_snapshot.js";
 import { Tape } from "../web/tape.js";
 
 // --- RK86 byte → Unicode character mapping ---
@@ -434,15 +434,19 @@ function printHelp() {
   -m <файл>                монитор (по умолчанию: встроенный mon32.bin)
   -p                       загрузить файл без запуска
   -g <адрес>               адрес запуска (несовместим с -p)
+  -G <адрес>                запуск через команду G монитора (инъекция клавиш)
   --exit-halt              выход при выполнении HLT
   --exit-address [адрес]   выход при переходе на адрес (по умолчанию: 0xFFFE)
   --headless               без отображения экрана (для автотестов)
+  --turbo                  выполнение без ограничения скорости (для автотестов)
   --timeout <сек>          выход по таймауту
   --memory <файл>          сохранить память в файл при выходе
   --memory-from <адрес>    начало области дампа памяти (по умолчанию: 0x0000)
   --memory-to <адрес>      конец области дампа памяти включительно (по умолчанию: 0xFFFF)
   --screen <файл>          сохранить экран 78x30 как текст при выходе
+  --snapshot <файл>        сохранить снимок состояния (JSON) при выходе
   --input <seq>            инъекция клавиш (через запятую): KeyA,Digit1,Enter,...
+                           токен *N задаёт паузу N мс (например *200)
 
 Примеры:
   bunx rk86                          запуск монитора
@@ -536,6 +540,7 @@ async function main() {
     const monitorFile_ = arg(args, "-m") as string | undefined;
 
     const headless = flag(args, "--headless");
+    const turbo = flag(args, "--turbo");
     const timeoutSec = arg(args, "--timeout", undefined, /^\d+(\.\d+)?$/, parseFloat) as number | undefined;
     const memoryFile = arg(args, "--memory") as string | undefined;
     const addrRe = /^(0x)?[0-9a-fA-F]+$/i;
@@ -543,7 +548,15 @@ async function main() {
     const memoryFrom = (arg(args, "--memory-from", undefined, addrRe, parseAddr) as number | undefined) ?? 0x0000;
     const memoryTo = (arg(args, "--memory-to", undefined, addrRe, parseAddr) as number | undefined) ?? 0xffff;
     const screenFile = arg(args, "--screen") as string | undefined;
-    const inputSeq = arg(args, "--input") as string | undefined;
+    const snapshotFile = arg(args, "--snapshot") as string | undefined;
+    const goViaMonitor = arg(args, "-G", undefined, addrRe, parseAddr) as number | undefined;
+    let inputSeq = arg(args, "--input") as string | undefined;
+    if (goViaMonitor !== undefined) {
+        const hex = goViaMonitor.toString(16).toUpperCase();
+        const keys = [...hex].map((c) => (c >= "0" && c <= "9" ? `Digit${c}` : `Key${c}`));
+        const gSeq = ["KeyG", ...keys, "Enter"].join(",");
+        inputSeq = inputSeq ? `${inputSeq},${gSeq}` : gSeq;
+    }
 
     const programFile = args[0];
 
@@ -554,6 +567,7 @@ async function main() {
         font: rk86_font_image(),
         keyboard,
         io,
+        log: (...args: unknown[]) => console.log(...args),
     };
     const machine = machineBuilder as Machine;
 
@@ -631,6 +645,7 @@ async function main() {
         exiting = true;
         if (screenFile) await writeFile(screenFile, dumpScreen(machine));
         if (memoryFile) await writeFile(memoryFile, new Uint8Array(machine.memory.buf.slice(memoryFrom, memoryTo + 1)));
+        if (snapshotFile) await writeFile(snapshotFile, rk86_snapshot(machine, pkg.version));
         if (!headless) process.stdout.write("\x1b[?25h"); // show cursor
         if (message !== null && !headless) {
             console.log();
@@ -650,45 +665,58 @@ async function main() {
               }
             : undefined;
 
-    const armed = { value: entryPoint === undefined };
-    machine.runner.execute({
-        terminate_address: exitAddr ? exitAddrValue : undefined,
-        exit_on_halt: exitOnHalt,
-        on_terminate: onTerminate,
-        armed,
-    });
-
     // Autorun loaded file after monitor initializes
     const armDelayMs = 500;
     if (entryPoint !== undefined && !loadOnly) {
         setTimeout(() => {
             machine.cpu.jump(entryPoint!);
-            armed.value = true;
         }, armDelayMs);
     }
 
-    // Inject key sequence after emulator settles
+    // Build a CPU-tick-scheduled key-event list so injection is deterministic
+    // (independent of wall-clock jitter). Milliseconds map to ticks via
+    // FREQ/1000, so existing --input timings remain intuitive.
+    const tickEvents: { at_ticks: number; action: () => void }[] = [];
     if (inputSeq) {
         const keys = inputSeq
             .split(",")
             .map((s) => s.trim())
             .filter((s) => s.length > 0);
+        const TICKS_PER_MS = machine.runner.FREQ / 1000;
         const settleMs = armDelayMs + 1000;
         const keyDownMs = 50;
         const keyGapMs = 50;
-        setTimeout(() => {
-            const pressNext = (i: number) => {
-                if (i >= keys.length) return;
-                const code = keys[i];
-                keyboard.onkeydown(code);
-                setTimeout(() => {
-                    keyboard.onkeyup(code);
-                    setTimeout(() => pressNext(i + 1), keyGapMs);
-                }, keyDownMs);
-            };
-            pressNext(0);
-        }, settleMs);
+        let t = settleMs * TICKS_PER_MS;
+        for (const token of keys) {
+            if (token.startsWith("*")) {
+                const delayMs = parseInt(token.slice(1), 10);
+                if (!Number.isFinite(delayMs) || delayMs < 0) {
+                    console.error(`неверная задержка в --input: ${token}`);
+                    process.exit(1);
+                }
+                t += delayMs * TICKS_PER_MS;
+                continue;
+            }
+            const code = token;
+            tickEvents.push({ at_ticks: t, action: () => keyboard.onkeydown(code) });
+            t += keyDownMs * TICKS_PER_MS;
+            tickEvents.push({ at_ticks: t, action: () => keyboard.onkeyup(code) });
+            t += keyGapMs * TICKS_PER_MS;
+        }
     }
+
+    machine.runner.execute({
+        terminate_address: exitAddr ? exitAddrValue : undefined,
+        exit_on_halt: exitOnHalt,
+        on_terminate: onTerminate,
+        turbo,
+        on_batch_complete: () => {
+            const now = machine.runner.total_ticks;
+            while (tickEvents.length > 0 && tickEvents[0].at_ticks <= now) {
+                tickEvents.shift()!.action();
+            }
+        },
+    });
 
     // Exit on timeout
     if (timeoutSec !== undefined) {

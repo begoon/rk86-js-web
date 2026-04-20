@@ -113,6 +113,7 @@ beforeEach(() => {
         keyboard: create_keyboard(),
         screen: create_screen(),
         ui: {},
+        log: () => {},
     } as unknown as Machine;
     machine.screen.machine = machine;
 });
@@ -157,9 +158,8 @@ test.each([
 ])("restore from %s", (type, snapshot) => {
     expect.assertions(50);
 
-    const origLog = console.log;
     const logMessages: string[] = [];
-    console.log = (...args: unknown[]) => logMessages.push(args.join(" "));
+    machine.log = (...args: unknown[]) => logMessages.push(args.join(" "));
 
     machine.ui.update_screen_geometry = (width: number, height: number) => expect([width, height]).toEqual([3, 4]);
     machine.ui.update_video_memory_address = (base: number) => expect(base).toBe(0x1111);
@@ -217,8 +217,6 @@ test.each([
     expect(machine.screen.light_pen_x).toBe(8);
     expect(machine.screen.light_pen_y).toBe(9);
     expect(machine.screen.light_pen_active).toBe(1);
-
-    console.log = origLog;
 });
 
 test("restore failure", () => {

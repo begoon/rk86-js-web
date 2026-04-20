@@ -22,7 +22,7 @@ function createMachine(): Machine {
         update_video_memory_address() {},
     };
 
-    const stub = { ui, io, keyboard, font: "" } as any;
+    const stub = { ui, io, keyboard, font: "", log: () => {} } as any;
     const memory = new Memory(stub);
     stub.memory = memory;
 

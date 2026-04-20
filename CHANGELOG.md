@@ -1,5 +1,64 @@
 # Changelog
 
+## 2026-04-20
+
+### Terminal emulator
+
+- `--snapshot <файл>` — save the full JSON state snapshot on exit (same format
+  as the web emulator, round-trips through `rk86_snapshot_restore`).
+- `--input` now accepts `*N` pause tokens between keys, e.g.
+  `"KeyD,Enter,*500,KeyG,Enter"` inserts a 500 ms pause.
+- `--turbo` — run the emulator without the real-time throttle. E2e tests with
+  clear exit conditions (HLT / exit-address) finish ~100× faster while
+  producing bit-identical snapshots to non-turbo runs.
+- `-G <адрес>` — start a loaded program via the monitor's `G` command
+  (keyboard injection) instead of `cpu.jump`. Complement to `-g` (direct
+  jump) when the program expects a fresh monitor prompt.
+
+### Determinism
+
+- `--input` key injection is now scheduled by **CPU ticks** rather than
+  wall-clock `setTimeout`. Every key event fires at a fixed emulated tick
+  regardless of host load, so `--snapshot` output is byte-stable across runs
+  and CI environments.
+- Cursor blink (`screen.cursor_state`) is CPU-tick-driven (was wall-clock
+  `setTimeout`). At real-time speed it still blinks every ~0.5 s wall; under
+  turbo / CPU starvation it stays in sync with emulated time.
+- `armed` option removed from `runner.execute()` — it was guarding the
+  terminate-address check during monitor boot, but stock mon32 never executes
+  HLT and never reaches `0xFFFE` during its init path.
+
+### Web UI
+
+- "Запустить программу" (Run) button now injects `G<addr><Enter>` through the
+  monitor instead of `cpu.jump(entry)`. Fixes keyboard-state inconsistencies
+  in programs that rely on the monitor being at a clean prompt (e.g.
+  ALIAZ1).
+
+### Engine
+
+- `Machine.log: (...args: unknown[]) => void` — injectable logger replacing
+  hard-coded `console.log` in `Screen`, `Runner`, `Debugger`. Silences
+  "установлен размер экрана…" spam in tests; web/terminal/component builders
+  set it to `console.log`.
+- `runner.execute()` gained `on_batch_complete?: () => void` (fires at the
+  end of each `TICK_PER_MS`-tick batch, ~10 ms of emulated time) and
+  `turbo?: boolean`. Both are used by the terminal to drive deterministic
+  tick-scheduled input and fast e2e tests.
+
+### Tests
+
+- New golden tests in `tests/rk86_terminal_e2e.test.ts` for the D-dump /
+  G-exit flow and the M-command / HLT flow — compare the full JSON snapshot
+  **and** the screen dump against committed goldens in `tests/data/`.
+- Diff helper reports mismatches as `path/to/golden.json:LINE` with
+  `expected:`/`actual:` pairs (clickable in modern terminals / IDEs). Both
+  sides are re-serialised via `JSON.parse → JSON.stringify(…, null, 4)` so
+  formatter-inlined arrays in the committed golden can't misalign the diff.
+- `tests/data/*.json` added to `.prettierignore` so committed goldens stay
+  in the canonical form the diff's line numbers refer to.
+- Full suite: 166 tests pass; e2e file ~8.5 s (was ~15 s).
+
 ## 2026-04-18
 
 ### Terminal emulator: headless mode + e2e testing

@@ -17,6 +17,7 @@ export interface Machine {
     screen: Screen;
     tape: TapeInterface;
     font: string;
+    log: (...args: unknown[]) => void;
 
     reset: () => void;
     restart: () => void;

@@ -26,7 +26,7 @@ RK-86 emulator (Intel 8080 CPU) built with SvelteKit. Also available as a standa
 
 - `src/lib/core/` — emulator core (CPU, memory, screen, keyboard, sound interface, runner, disassembler)
 - `src/lib/web/` — browser layer (boot, canvas renderer, Web Audio sound, tape with save-to-file)
-- `src/lib/terminal/` — terminal emulator (Node.js/Bun, Unicode screen rendering; supports `--headless` mode with `--input`, `--timeout`, `--exit-halt`, `--screen`, `--memory` for e2e testing)
+- `src/lib/terminal/` — terminal emulator (Node.js/Bun, Unicode screen rendering; `--headless`, `--turbo`, `--timeout`, `--exit-halt`, `--exit-address`, `--screen`, `--memory[-from|-to]`, `--snapshot`, `--input "Key…[,*ms…]"`, `-g <addr>` (CPU jump), `-G <addr>` (route through monitor G command) for e2e testing)
 - `src/lib/component/` — standalone `<radio86-emulator>` web component
 - `tools/` — build scripts (catalog generator, version)
 - `src/routes/` — SvelteKit pages and UI components
@@ -38,7 +38,8 @@ RK-86 emulator (Intel 8080 CPU) built with SvelteKit. Also available as a standa
 - `tests/` — bun unit tests
 - `tests/cpu/` — auto-generated table-driven CPU test data (one file per instruction)
 - `tests/generate_cpu_data.ts` — generates `tests/cpu/*_data.ts` from the CPU implementation
-- `tests/rk86_terminal_e2e.test.ts` — e2e tests that spawn the terminal emulator in `--headless` mode and assert on screen/memory dumps
+- `tests/rk86_terminal_e2e.test.ts` — e2e tests that spawn the terminal emulator and assert on screen/memory/snapshot dumps vs goldens in `tests/data/`
+- `tests/data/snapshot-command-*.json`, `screen-command-*.txt` — golden snapshots for e2e flows (kept in canonical `JSON.stringify(…, null, 4)` form; `tests/data/*.json` is in `.prettierignore`)
 
 ## Generated files (gitignored)
 
@@ -62,7 +63,10 @@ All four are auto-generated via `svelte.config.js` on every build/dev.
 - Assembler is an iframe (`static/i8080asm.html`) accessing `window.parent.machine`
 - `window.machine` is exposed for the assembler iframe
 - UI state from engine callbacks flows through `state.svelte.ts` (reactive `$state` object)
-- Machine methods (`reset`, `restart`, `pause`, `loadCatalogFile`, `runLoadedFile`, `uploadFile`) are assigned in `boot.ts`
+- Machine methods (`reset`, `restart`, `pause`, `loadCatalogFile`, `runLoadedFile`, `uploadFile`) are assigned in `boot.ts`. `runLoadedFile` injects `G<addr>Enter` via `simulate_keyboard` rather than `cpu.jump` — the direct jump leaves the monitor mid-prompt-loop with inconsistent keyboard state that broke programs like ALIAZ1
+- Deterministic execution: `runner.execute()` takes `on_batch_complete` (fires at end of every `TICK_PER_MS`-tick batch) and `turbo` (runs 100 batches per macrotask, yields with `setTimeout(..., 0)`). The terminal's `--input` injection is scheduled in CPU ticks (not wall-clock ms), so golden-snapshot e2e tests are bit-identical across runs and turbo-on vs turbo-off
+- Cursor blink is CPU-tick-driven too (`screen.tick_cursor`, called from the runner) — wall-clock `setTimeout` would desync with turbo
+- `machine.log(...)` is the injectable logger: web/terminal/component builders set it to `console.log`; tests set it to `() => {}` to silence "установлен размер экрана…" noise. Core modules use `this.machine.log(...)`, never `console.log`
 - Keyboard shortcuts: `Cmd/Ctrl+K` then a letter key (`D` for debugger, `A` for assembler, etc.)
 - Icon buttons in toolbar are non-focusable (`tabindex=-1`) to prevent accidental activation via Enter/Space
 - Dialogs blur active element on close to prevent focus returning to triggering button

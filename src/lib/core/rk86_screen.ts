@@ -100,8 +100,18 @@ export class Screen {
     start(renderer: Renderer) {
         this.renderer = renderer;
         this.renderer.connect(this.machine);
-        this.flip_cursor();
         this.render_loop();
+    }
+
+    // CPU-tick-driven cursor blink. Wall-clock setTimeout made cursor_state
+    // non-deterministic under --turbo (blinks decouple from emulated time).
+    // Called by the runner on every batch; we advance our own tick counter.
+    private last_flip_ticks = 0;
+    tick_cursor(total_ticks: number, ticks_per_flip: number): void {
+        while (total_ticks - this.last_flip_ticks >= ticks_per_flip) {
+            this.cursor_state = !this.cursor_state;
+            this.last_flip_ticks += ticks_per_flip;
+        }
     }
 
     private render_loop() {
@@ -121,7 +131,7 @@ export class Screen {
 
         if (this.last_width === this.width && this.last_height === this.height) return;
 
-        console.log(`установлен размер экрана: ${width} x ${height}`);
+        this.machine.log(`установлен размер экрана: ${width} x ${height}`);
         this.last_width = this.width;
         this.last_height = this.height;
         if (this.last_video_memory_base !== -1) this.ready = true;
@@ -136,7 +146,7 @@ export class Screen {
 
         if (this.last_video_memory_base === this.video_memory_base) return;
 
-        console.log(
+        this.machine.log(
             `установлена видеопамять с адреса`,
             `${hex16(this.video_memory_base)}`,
             `размером ${hex16(this.video_memory_size)}`,
@@ -150,8 +160,4 @@ export class Screen {
         this.cursor_y = y;
     }
 
-    private flip_cursor() {
-        this.cursor_state = !this.cursor_state;
-        setTimeout(() => this.flip_cursor(), this.cursor_rate);
-    }
 }

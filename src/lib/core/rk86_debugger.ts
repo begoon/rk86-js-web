@@ -140,7 +140,7 @@ export default class Debugger {
             this.download_cmd_filename_count,
         );
 
-        console.log(
+        this.machine.log(
             `скачивание ${hex16(this.download_cmd_snapshot_address)}:${hex16(
                 this.download_cmd_snapshot_length,
             )} -> ${filename}`,
@@ -525,7 +525,7 @@ export default class Debugger {
         const limit = 10;
         if (history.length === 0) return;
         const from = Math.max(0, history.length - limit);
-        console.log(history);
+        this.machine.log(history);
         history.slice(from).forEach((cmd: string, index: number) => {
             this.put("%d: %s".format(from + index + 1, cmd));
         });
@@ -551,7 +551,7 @@ export default class Debugger {
             const entry = this.commands[cmd.toLowerCase()];
             if (entry) {
                 const [handler, description] = entry;
-                console.log(description, args);
+                this.machine.log(description, args);
                 handler.call(this, args);
             } else {
                 this.put("неизвестная команда: %s\n".format(cmd));

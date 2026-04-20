@@ -4,6 +4,29 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// Compares two multi-line JSON strings line-by-line and throws with a readable
+// diff if they differ. The snapshot JSON is pretty-printed with one value per
+// line, so line indices map directly to the field that changed.
+function assertSnapshotsEqual(actual: string, expected: string, label = "line") {
+    if (actual === expected) return;
+    const a = actual.split("\n");
+    const e = expected.split("\n");
+    const diffs: string[] = [];
+    const maxLen = Math.max(a.length, e.length);
+    for (let i = 0; i < maxLen; i++) {
+        if (a[i] !== e[i]) {
+            diffs.push(`${label}:${i + 1}`);
+            diffs.push(`  expected: ${e[i] ?? "<eof>"}`);
+            diffs.push(`  actual:   ${a[i] ?? "<eof>"}`);
+            if (diffs.length > 60) {
+                diffs.push("... (diff truncated)");
+                break;
+            }
+        }
+    }
+    throw new Error(`snapshot mismatch:\n${diffs.join("\n")}`);
+}
+
 const TERMINAL = "src/lib/terminal/rk86_terminal.ts";
 
 function runTerminal(args: string[], timeoutMs: number): Promise<{ code: number | null; elapsedMs: number }> {
@@ -32,10 +55,7 @@ function withTmpDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 test("headless + timeout exits after N seconds and dumps screen", async () => {
     await withTmpDir(async (dir) => {
         const screen = join(dir, "screen.txt");
-        const { code, elapsedMs } = await runTerminal(
-            ["--headless", "--timeout", "2", "--screen", screen],
-            15000,
-        );
+        const { code, elapsedMs } = await runTerminal(["--headless", "--timeout", "2", "--screen", screen], 15000);
         expect(code).toBe(0);
         expect(elapsedMs).toBeGreaterThanOrEqual(1800);
         expect(elapsedMs).toBeLessThan(5000);
@@ -51,17 +71,7 @@ test("memory dump writes exact byte range", async () => {
     await withTmpDir(async (dir) => {
         const mem = join(dir, "mem.bin");
         const { code } = await runTerminal(
-            [
-                "--headless",
-                "--timeout",
-                "2",
-                "--memory",
-                mem,
-                "--memory-from",
-                "0xF800",
-                "--memory-to",
-                "0xF803",
-            ],
+            ["--headless", "--timeout", "2", "--memory", mem, "--memory-from", "0xF800", "--memory-to", "0xF803"],
             15000,
         );
         expect(code).toBe(0);
@@ -76,15 +86,7 @@ test("--input injects monitor D command and produces hex dump on screen", async 
     await withTmpDir(async (dir) => {
         const screen = join(dir, "screen.txt");
         const { code } = await runTerminal(
-            [
-                "--headless",
-                "--timeout",
-                "4",
-                "--input",
-                "KeyD,Digit0,Comma,KeyF,KeyF,Enter",
-                "--screen",
-                screen,
-            ],
+            ["--headless", "--timeout", "4", "--input", "KeyD,Digit0,Comma,KeyF,KeyF,Enter", "--screen", screen],
             15000,
         );
         expect(code).toBe(0);
@@ -102,6 +104,7 @@ test("--input + --exit-halt: write HLT at 0000 and run via monitor M/G commands"
         const { code, elapsedMs } = await runTerminal(
             [
                 "--headless",
+                "--turbo",
                 "--exit-halt",
                 "--input",
                 "KeyM,Enter,Digit7,Digit6,Enter,Period,KeyG,Digit0,Enter",
@@ -128,3 +131,102 @@ test("--input + --exit-halt: write HLT at 0000 and run via monitor M/G commands"
         expect(text).toContain("-->G0");
     });
 });
+
+function assertSnapshotMatchesGolden(actualPath: string, goldenPath: string) {
+    // Re-serialize both sides with JSON.stringify so formatting differences
+    // (e.g. a JSON formatter inlining short arrays in the committed golden)
+    // can't misalign the line-by-line diff. The diff's line numbers then
+    // refer to the canonical form shared by both files.
+    const actualObj = JSON.parse(readFileSync(actualPath, "utf-8"));
+    const goldenObj = JSON.parse(readFileSync(goldenPath, "utf-8"));
+    actualObj.created = goldenObj.created; // drop non-deterministic timestamp
+    const actual = JSON.stringify(actualObj, null, 4);
+    const golden = JSON.stringify(goldenObj, null, 4);
+    assertSnapshotsEqual(actual, golden, goldenPath);
+}
+
+function assertScreenMatchesGolden(actualPath: string, goldenPath: string) {
+    assertSnapshotsEqual(readFileSync(actualPath, "utf-8"), readFileSync(goldenPath, "utf-8"), goldenPath);
+}
+
+function cmd(keys: string) {
+    return keys.split(" ");
+}
+
+test("snapshot matches golden after D-dump and G FFFE exit", async () => {
+    await withTmpDir(async (dir) => {
+        const screen = join(dir, "screen-command-d.txt");
+        const snapshot = join(dir, "snapshot-command-d.json");
+        const { code } = await runTerminal(
+            [
+                "--headless",
+                "--turbo",
+                "--timeout",
+                "5",
+                "--input",
+                [
+                    cmd("KeyD KeyF Digit8 Digit0 Digit0 Comma KeyF Digit8 KeyF KeyF Enter"),
+                    "*1000",
+                    cmd("KeyG KeyF KeyF KeyF KeyE Enter"),
+                ]
+                    .flat()
+                    .join(","),
+                "--exit-address",
+                "0xfffe",
+                "--screen",
+                screen,
+                "--snapshot",
+                snapshot,
+            ],
+            20000,
+        );
+        expect(code).toBe(0);
+        assertScreenMatchesGolden(screen, "tests/data/screen-command-d.txt");
+        assertSnapshotMatchesGolden(snapshot, "tests/data/snapshot-command-d.json");
+    });
+}, 30000);
+
+test("snapshot matches golden after M-command program entry and halt", async () => {
+    await withTmpDir(async (dir) => {
+        const screen = join(dir, "screen-command-m.txt");
+        const snapshot = join(dir, "snapshot-command-m.json");
+        const { code } = await runTerminal(
+            [
+                "--headless",
+                "--turbo",
+                "--timeout",
+                "30",
+                "--input",
+                [
+                    cmd("KeyM Enter"),
+                    // lxi h, 0007h ; 21 07 00
+                    cmd("Digit2 Digit1 Enter"), // 0000: 21 - lxi
+                    cmd("Digit0 Digit7 Enter"), // 0001: 07 - addr low
+                    cmd("Digit0 Digit0 Enter"), // 0002: 00 - addr high
+                    // call 0f818h ; CD 18 F8
+                    cmd("KeyC KeyD Enter"), // 0003: CD - call
+                    cmd("Digit1 Digit8 Enter"), // 0004: 18 - addr low
+                    cmd("KeyF Digit8 Enter"), // 0005: F8 - addr high
+                    // hlt ; 76
+                    cmd("Digit7 Digit6 Enter"), // 0006: 76 - HLT
+                    // db: 24h, 0 ; 36h '$', 00h
+                    cmd("Digit2 Digit4 Enter"), // 0007: '2', '4' -> '$'
+                    cmd("Digit0 Digit0 Enter"), // 0008: 00
+                    cmd("Period"), // .
+                    cmd("KeyG Enter"), // G
+                ]
+                    .flat()
+                    .join(","),
+                "--exit-halt",
+                "--screen",
+                screen,
+                "--snapshot",
+                snapshot,
+            ],
+            60000,
+        );
+        expect(code).toBe(0);
+        assertScreenMatchesGolden(screen, "tests/data/screen-command-m.txt");
+        assertSnapshotMatchesGolden(snapshot, "tests/data/snapshot-command-m.json");
+    });
+}, 60000);

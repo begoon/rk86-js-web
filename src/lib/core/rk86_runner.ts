@@ -5,7 +5,11 @@ export interface ExecuteOptions {
     terminate_address?: number;
     on_terminate?: () => void;
     exit_on_halt?: boolean;
-    armed?: { value: boolean };
+    on_batch_complete?: () => void;
+    // Run many batches back-to-back per macrotask, yielding with setTimeout(0)
+    // between calls. Tests see the same per-tick behavior (on_batch_complete
+    // still fires every batch) but the wall-clock runs ~100x faster.
+    turbo?: boolean;
 }
 
 export class Runner {
@@ -51,17 +55,19 @@ export class Runner {
     init_sound(enabled: boolean) {
         if (enabled && this.sound == null && this.sound_factory) {
             this.sound = this.sound_factory();
-            console.log("звук включен");
+            this.machine.log("звук включен");
         } else if (!enabled) {
             this.sound = null;
-            console.log("звук выключен");
+            this.machine.log("звук выключен");
         }
     }
 
     execute(options: ExecuteOptions = {}) {
-        const { terminate_address, on_terminate, exit_on_halt, armed } = options;
+        const { terminate_address, on_terminate, exit_on_halt, on_batch_complete, turbo } = options;
         clearTimeout(this.execute_timer);
-        if (!this.paused) {
+        const bursts = turbo ? 100 : 1;
+        for (let burst = 0; burst < bursts; burst++) {
+            if (this.paused) break;
             let batch_ticks = 0;
             let batch_instructions = 0;
             while (batch_ticks < this.TICK_PER_MS) {
@@ -86,7 +92,6 @@ export class Runner {
                     this.machine.ui.on_visualizer_hit(this.machine.memory.read_raw(this.machine.cpu.pc));
                 }
                 batch_instructions += 1;
-                if (armed?.value === false) continue;
                 if (terminate_address !== undefined && this.machine.cpu.pc === terminate_address) {
                     on_terminate?.();
                     return;
@@ -102,8 +107,10 @@ export class Runner {
 
             this.instructions_per_millisecond = batch_instructions / elapsed;
             this.ticks_per_millisecond = batch_ticks / elapsed;
+            this.machine.screen.tick_cursor(this.total_ticks, this.FREQ * (this.machine.screen.cursor_rate / 1000));
+            on_batch_complete?.();
         }
-        this.execute_timer = setTimeout(() => this.execute(options), 10);
+        this.execute_timer = setTimeout(() => this.execute(options), turbo ? 0 : 10);
     }
 
     pause() {
