@@ -2,6 +2,43 @@
 
 ## 2026-04-20
 
+### Assembler
+
+- Replaced the in-page `static/i8080asm.html` iframe assembler with asm8's
+  standalone playground at `static/asm/`. The toolbar "Ассемблер" button now
+  opens `{base}/asm/` in a new tab. Dropped the `window.parent.machine`
+  cross-iframe contract and the `window.machine` / `UI.toggle_assembler`
+  exposures that supported it.
+- Bumped `asm8080` dep to `^1.0.21` (same package as `asm8`).
+- Playground "run"/"download" produces `.rk` files (not `.bin`): 4-byte big-
+  endian header (`start`, `end`) + compact payload covering `min(start)..
+  max(end)` (gaps zero-filled) + 3-byte trailer (`0xE6`, `rk86_check_sum`
+  big-endian). Programs assembled with `org 3000h` no longer carry 12 KB of
+  leading zeros.
+- Example `.asm` files live under `static/asm/examples/*.asm` and are
+  fetched by the playground at load time (one file per `const`, all 11
+  fetches kicked off in parallel, awaited per-example on use). Edit a file
+  and reload — no rebuild of `playground.js` needed.
+- New `?handoff=<uuid>` URL param on the emulator: data URLs in `?run=`
+  overflow browser URL limits (~8 KB, Chrome returns 431) for larger
+  programs. The playground writes the `.rk` as JSON `{ts, url}` to
+  `localStorage["asm8-handoff:<uuid>"]`, opens the emulator with that id,
+  and the emulator reads + deletes the key one-shot. Stale keys (>1 h) are
+  swept at the next write.
+- `?run=` / `?file=` / `?handoff=` autorun now routes through
+  `machine.runLoadedFile()` (monitor G-injection), unified with the toolbar
+  "Запустить программу" button. Fixes ALIAZ1-style keyboard-state bugs that
+  `cpu.jump(entry)` caused.
+- Vite dev middleware (in `vite.config.ts`) rewrites `/asm/` and `/asm` to
+  `/asm/index.html`; in production the static adapter's output is served
+  natively by the webserver and this is a no-op.
+
+### Naming / style conventions (CLAUDE.md)
+
+- `El` suffix → `Element`, `Btn` → `Button`, `res` → `result`; prefer
+  `let`/`const` over `var`. Applied throughout `static/asm/playground.js`
+  after the asm8 drop-in.
+
 ### Terminal emulator
 
 - `--snapshot <файл>` — save the full JSON state snapshot on exit (same format

@@ -60,8 +60,11 @@ All four are auto-generated via `svelte.config.js` on every build/dev.
 - Debugger mode: combined view with 1:1 canvas (top-left), disassembler (right), console (below). Canvas click focuses keyboard input to emulator; clicking disassembler/console redirects input there
 - Floating panels (visualizer, keyboard) are non-modal, draggable Svelte components
 - Disassembler and Terminal are embedded-only (no standalone floating mode)
-- Assembler is an iframe (`static/i8080asm.html`) accessing `window.parent.machine`
-- `window.machine` is exposed for the assembler iframe
+- Assembler is the standalone asm8 playground under `static/asm/` (drop-in of `asm8/docs/`). The toolbar "Ассемблер" button opens `{base}/asm/` in a new tab. Example `.asm` files live at `static/asm/examples/*.asm` (one fetch per file on playground load — no bundled JS strings). The playground's "run"/"download" builds an **`.rk` file** (header: big-endian `start`+`end`; trailer: `E6` + big-endian `rk86_check_sum`) — programs with non-zero `org` don't carry leading-zero padding
+- Playground → emulator handoff: `localStorage["asm8-handoff:<uuid>"]` holds `{ts, url}` JSON (url = data URL carrying the `.rk`); emulator reads via `?handoff=<uuid>`, deletes the key one-shot. Stale keys (>1 h) are swept at the next playground write. This avoids browser URL-length limits (Chrome 431) for large programs that `?run=data:...` can't fit
+- `?run=` / `?file=` / `?handoff=` autorun all route through `machine.runLoadedFile()` (monitor G-injection) — unified with the toolbar "Запустить программу" button, not `cpu.jump(entry)` (ALIAZ1-style keyboard-state bugs)
+- Vite dev middleware (`staticIndexFallback` in `vite.config.ts`, registered before `sveltekit()` so it runs first) rewrites `/asm` and `/asm/` to `/asm/index.html` — production's static-adapter build is served by a real webserver that handles directory indexes natively
+- `asm8080` npm package (which is asm8) is also used by the terminal to assemble `.asm` files at load time
 - UI state from engine callbacks flows through `state.svelte.ts` (reactive `$state` object)
 - Machine methods (`reset`, `restart`, `pause`, `loadCatalogFile`, `runLoadedFile`, `uploadFile`) are assigned in `boot.ts`. `runLoadedFile` injects `G<addr>Enter` via `simulate_keyboard` rather than `cpu.jump` — the direct jump leaves the monitor mid-prompt-loop with inconsistent keyboard state that broke programs like ALIAZ1
 - Deterministic execution: `runner.execute()` takes `on_batch_complete` (fires at end of every `TICK_PER_MS`-tick batch) and `turbo` (runs 100 batches per macrotask, yields with `setTimeout(..., 0)`). The terminal's `--input` injection is scheduled in CPU ticks (not wall-clock ms), so golden-snapshot e2e tests are bit-identical across runs and turbo-on vs turbo-off
@@ -73,3 +76,11 @@ All four are auto-generated via `svelte.config.js` on every build/dev.
 - `BASE_PATH` env var sets deployment base path (e.g. `BASE_PATH=/alpha bun run build`)
 - URL auto-load: `?file=` / `?run=` (load + run) and `?load=` (load only) in `boot.ts`. Value can be a catalog name, absolute URL, or `data:[;name=<filename>];base64,<payload>` data URL. `name=` hint drives extension-based parser selection; defaults to `inline.bin`. URL values are `decodeURIComponent`-ed before decoding; URL-safe base64 (`-_`) is normalized to standard (`+/`)
 - All text in UI is in Russian
+
+## Naming convensions
+- don't use suffix "El", use "Element"
+- don't use suffix "Btn", use "Button"
+- don't use name "res", use "result"
+
+## Javascript convension
+- don't use "var", use "let" or "const"

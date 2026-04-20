@@ -35,7 +35,6 @@ class MinimalUI {
     update_activity_indicator = (_active: boolean): void => {};
     update_written_bytes = (_count: number): void => {};
     hightlight_written_bytes = (_on: boolean): void => {};
-    toggle_assembler: (() => void) | undefined;
     on_visualizer_hit: ((opcode: number) => void) | undefined;
     on_pause_changed: ((value: boolean) => void) | undefined;
     start_update_perf = () => {};

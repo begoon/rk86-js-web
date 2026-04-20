@@ -41,7 +41,6 @@ export class UI {
     i8080disasm: unknown;
     visualizer: unknown;
     visualizer_visible = false;
-    toggle_assembler: (() => void) | undefined;
     on_visualizer_hit: ((opcode: number) => void) | undefined;
     on_pause_changed: ((value: boolean) => void) | undefined;
     refreshDebugger: (() => void) | undefined;
@@ -402,8 +401,30 @@ export async function main(host: HostCallbacks) {
     let match;
     const auto_run = (match = url.match(/(file|run)=([^&]+)/)) ? decodeURIComponent(match[2]) : null;
     const auto_load = (match = url.match(/load=([^&]+)/)) ? decodeURIComponent(match[1]) : null;
+    const handoff_id = (match = url.match(/handoff=([^&]+)/)) ? decodeURIComponent(match[1]) : null;
 
-    if (auto_run) {
+    // `handoff=<uuid>` is a same-origin handoff from the asm8 playground: it
+    // writes `{ts, url}` JSON to localStorage under `asm8-handoff:<uuid>`
+    // (url = data-URL carrying the assembled .rk) to avoid URL-length limits,
+    // then opens us with the id. Read + delete + treat as a regular auto-run.
+    let handoff_url: string | null = null;
+    if (handoff_id) {
+        const key = `asm8-handoff:${handoff_id}`;
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+                localStorage.removeItem(key);
+                const payload = JSON.parse(raw);
+                if (typeof payload?.url === "string") handoff_url = payload.url;
+            }
+        } catch {}
+        if (!handoff_url) console.warn(`handoff ключ не найден или повреждён: ${key}`);
+    }
+
+    if (handoff_url) {
+        console.log(`автозагрузка и запуск handoff ${handoff_id}`);
+        await loadAutoexecFile(handoff_url);
+    } else if (auto_run) {
         console.log(`автозагрузка и запуск файла ${auto_run}`);
         await loadAutoexecFile(auto_run);
     } else if (auto_load) {
@@ -413,8 +434,12 @@ export async function main(host: HostCallbacks) {
 
     machine.runner.execute();
 
-    if (auto_run && ui.selectedFile) {
-        setTimeout(() => machine.cpu.jump(ui.selectedFile!.entry), 500);
+    if ((auto_run || handoff_url) && ui.selectedFile) {
+        // Route through the monitor's G command (same path as the toolbar
+        // "Run" button) instead of cpu.jump, so the monitor is at a clean
+        // prompt and keyboard state is consistent — otherwise programs like
+        // ALIAZ1 inherit stale state and misbehave.
+        setTimeout(() => machine.runLoadedFile(), 500);
     }
 
     function reset() {

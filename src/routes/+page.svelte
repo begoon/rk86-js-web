@@ -4,7 +4,7 @@
     let shortcutsDialog = $state<HTMLDialogElement>();
     let hintText = $state("");
 
-    import { resolve } from "$app/paths";
+    import { asset, resolve } from "$app/paths";
     import { version } from "$lib/rk86_version";
     import { main as boot, type HostCallbacks } from "$lib/web/boot";
     import Debugger from "$lib/core/rk86_debugger";
@@ -43,7 +43,6 @@
                 console.error("ошибка при инициализации эмулятора");
                 return;
             }
-            m.ui.toggle_assembler = toggleAssembler;
             m.ui.on_visualizer_hit = (opcode: number) => {
                 ui.visualizerOpcode = opcode;
             };
@@ -62,7 +61,6 @@
             };
             machine = m;
             dbg = new Debugger(machine);
-            window.machine = machine;
         });
     });
 
@@ -79,8 +77,8 @@
         machine?.pause(paused);
     }
 
-    function toggleAssembler() {
-        assemblerVisible = !assemblerVisible;
+    function openAssembler() {
+        window.open(asset("/asm/"), "_blank", "noopener");
     }
 
     function toggleVisualizer() {
@@ -102,7 +100,7 @@
         r: () => machine?.restart(),
         p: togglePaused,
         s: toggleSound,
-        a: toggleAssembler,
+        a: openAssembler,
         v: toggleVisualizer,
         d: toggleDebugger,
         b: () => (keyboardVisible = !keyboardVisible),
@@ -146,7 +144,6 @@
     let paused = $state(false);
     let fullscreen = $state(false);
 
-    let assemblerVisible = $state(false);
     let visualizerVisible = $state(false);
     let debuggerVisible = $state(false);
     let disassemblerRef = $state<Disassembler>();
@@ -272,9 +269,8 @@
             <button
                 type="button"
                 class="icon"
-                class:active={assemblerVisible}
                 data-text="Ассемблер"
-                onclick={toggleAssembler}
+                onclick={openAssembler}
             >
                 <img class="icon" src="i/asm.svg" alt="Ассемблер" />
             </button>
@@ -354,10 +350,8 @@
                 <Terminal bind:this={terminal} onrun={(cmd) => dbg?.run(cmd)} />
             </div>
         </div>
-    {:else if assemblerVisible}
-        <iframe id="assembler_panel" src="i8080asm.html" title="Ассемблер"></iframe>
     {/if}
-    <div bind:this={canvasPlaceholder} class="canvas-placeholder" style={debuggerVisible || assemblerVisible ? "display: none" : ""}>
+    <div bind:this={canvasPlaceholder} class="canvas-placeholder" style={debuggerVisible ? "display: none" : ""}>
         <canvas bind:this={canvas}></canvas>
     </div>
     {#if visualizerVisible}
@@ -668,12 +662,6 @@
         border-radius: 4px;
         z-index: 1000;
         pointer-events: none;
-    }
-    #assembler_panel {
-        flex: 1;
-        min-height: 0;
-        width: 100%;
-        border: none;
     }
     main {
         width: 100vw;

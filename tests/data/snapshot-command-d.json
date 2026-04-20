@@ -1,9 +1,9 @@
 {
     "id": "rk86",
-    "created": "2026-04-20T10:41:47.057Z",
+    "created": "2026-04-20T13:59:52.407Z",
     "format": "1",
     "emulator": "rk86.ru",
-    "version": "2.0.17",
+    "version": "2.0.19",
     "start": "0x0000",
     "end": "0xFFFF",
     "boot": {

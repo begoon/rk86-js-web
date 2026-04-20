@@ -1726,6 +1726,127 @@ var ALL_MNEMONICS = new Set([
   "END",
   "EQU"
 ]);
+var INVERT_JUMP = {
+  Z: "JNZ",
+  NZ: "JZ",
+  C: "JNC",
+  NC: "JC",
+  PO: "JPE",
+  PE: "JPO",
+  P: "JM",
+  M: "JP",
+  "==": "JNZ",
+  "<>": "JZ"
+};
+var VALID_PROC_REGS = new Set(["PSW", "B", "D", "H"]);
+function popsAndRet(regs, orig) {
+  const out = [];
+  for (let k = regs.length - 1;k >= 0; k--) {
+    out.push({ text: `	POP ${regs[k]}`, orig });
+  }
+  out.push({ text: `	RET`, orig });
+  return out;
+}
+function preprocess(source) {
+  const lines = source.split(`
+`);
+  const out = [];
+  const stack = [];
+  let counter = 0;
+  let proc = null;
+  for (let i = 0;i < lines.length; i++) {
+    const line = lines[i];
+    const orig = i + 1;
+    const bare = stripComment(line).trim();
+    const ifMatch = bare.match(/^\.?if\s+(\S+)\s*$/i);
+    if (ifMatch) {
+      const cond = ifMatch[1].toUpperCase();
+      const jmp = INVERT_JUMP[cond];
+      if (!jmp) {
+        throw new AsmError(`unknown .if condition: ${ifMatch[1]}`, orig, line, firstNonSpaceCol(line));
+      }
+      const id = counter++;
+      stack.push({ id, sawElse: false, line: orig, source: line });
+      out.push({ text: `	${jmp} @_if_${id}_else`, orig });
+      continue;
+    }
+    if (/^\.?else\s*$/i.test(bare)) {
+      const top = stack[stack.length - 1];
+      if (!top) {
+        throw new AsmError(".else without .if", orig, line, firstNonSpaceCol(line));
+      }
+      if (top.sawElse) {
+        throw new AsmError("duplicate .else", orig, line, firstNonSpaceCol(line));
+      }
+      top.sawElse = true;
+      out.push({ text: `	JMP @_if_${top.id}_exit`, orig });
+      out.push({ text: `@_if_${top.id}_else:`, orig });
+      continue;
+    }
+    if (/^\.?endif\s*$/i.test(bare)) {
+      const top = stack.pop();
+      if (!top) {
+        throw new AsmError(".endif without .if", orig, line, firstNonSpaceCol(line));
+      }
+      const suffix = top.sawElse ? "exit" : "else";
+      out.push({ text: `@_if_${top.id}_${suffix}:`, orig });
+      continue;
+    }
+    const procMatch = bare.match(/^([A-Za-z_]\w*):?\s+\.?proc\b\s*(.*)$/i);
+    if (procMatch && !ALL_MNEMONICS.has(procMatch[1].toUpperCase())) {
+      if (proc) {
+        throw new AsmError("nested .proc not allowed", orig, line, firstNonSpaceCol(line));
+      }
+      const name = procMatch[1];
+      const regsRaw = procMatch[2].trim();
+      const regs = [];
+      if (regsRaw) {
+        for (const r of regsRaw.split(/[,\s]+/)) {
+          if (!r)
+            continue;
+          const up = r.toUpperCase();
+          if (!VALID_PROC_REGS.has(up)) {
+            throw new AsmError(`invalid .proc register: ${r} (expected PSW, B, D, or H)`, orig, line, firstNonSpaceCol(line));
+          }
+          regs.push(up);
+        }
+      }
+      proc = { regs, line: orig, source: line };
+      out.push({ text: `${name}:`, orig });
+      for (const r of regs) {
+        out.push({ text: `	PUSH ${r}`, orig });
+      }
+      continue;
+    }
+    if (/^\.proc(\s|$)/i.test(bare) || /^proc\s+\S/i.test(bare)) {
+      throw new AsmError(".proc requires a label", orig, line, firstNonSpaceCol(line));
+    }
+    if (/^\.?endp\s*$/i.test(bare)) {
+      if (!proc) {
+        throw new AsmError(".endp without .proc", orig, line, firstNonSpaceCol(line));
+      }
+      out.push(...popsAndRet(proc.regs, orig));
+      proc = null;
+      continue;
+    }
+    if (/^\.?return\s*$/i.test(bare)) {
+      if (!proc) {
+        throw new AsmError(".return outside .proc", orig, line, firstNonSpaceCol(line));
+      }
+      out.push(...popsAndRet(proc.regs, orig));
+      continue;
+    }
+    out.push({ text: line, orig });
+  }
+  if (stack.length) {
+    const top = stack[stack.length - 1];
+    throw new AsmError(".if without .endif", top.line, top.source, firstNonSpaceCol(top.source));
+  }
+  if (proc) {
+    throw new AsmError(".proc without .endp", proc.line, proc.source, firstNonSpaceCol(proc.source));
+  }
+  return out;
+}
 var MAX_STATEMENTS_PER_LINE = 10;
 function splitStatements(line) {
   const src = stripComment(line);
@@ -1847,35 +1968,46 @@ function stripDirectiveDot(s) {
   }
   return s;
 }
+var LABEL_RE = /^(?:[A-Za-z_]\w*|@\w+|\.\w+)$/;
+function isMnemonic(tok) {
+  return ALL_MNEMONICS.has(stripDirectiveDot(tok).toUpperCase());
+}
 function parseLine(line) {
   let s = stripComment(line).trim();
   if (!s)
     return { operands: [] };
   let label;
   const ci = s.indexOf(":");
-  if (ci > 0 && /^[A-Za-z_]\w*$/.test(s.slice(0, ci).trim())) {
+  if (ci > 0 && LABEL_RE.test(s.slice(0, ci).trim())) {
     label = s.slice(0, ci).trim();
     s = s.slice(ci + 1).trim();
   }
   if (!s)
     return { label, operands: [] };
-  const si = s.search(/\s/);
-  const first = si < 0 ? s : s.slice(0, si);
-  const rest = si < 0 ? "" : s.slice(si).trim();
-  if (!label && rest) {
-    const parts = rest.split(/\s+/);
-    if (stripDirectiveDot(parts[0]).toUpperCase() === "EQU") {
-      return {
-        label: first,
-        mnemonic: "EQU",
-        operands: [parts.slice(1).join(" ")],
-        isEqu: true
-      };
+  let si = s.search(/\s/);
+  let first = si < 0 ? s : s.slice(0, si);
+  let rest = si < 0 ? "" : s.slice(si).trim();
+  if (!label && rest && LABEL_RE.test(first) && !isMnemonic(first)) {
+    const nextTok = rest.match(/^\S+/)?.[0] ?? "";
+    if (isMnemonic(nextTok)) {
+      label = first;
+      si = rest.search(/\s/);
+      first = si < 0 ? rest : rest.slice(0, si);
+      rest = si < 0 ? "" : rest.slice(si).trim();
     }
+  }
+  const mnemonic = stripDirectiveDot(first);
+  if (label && mnemonic.toUpperCase() === "EQU") {
+    return {
+      label,
+      mnemonic: "EQU",
+      operands: [rest],
+      isEqu: true
+    };
   }
   return {
     label,
-    mnemonic: stripDirectiveDot(first),
+    mnemonic,
     operands: rest ? splitOperands(rest) : []
   };
 }
@@ -1891,6 +2023,31 @@ function tokenizeExpr(expr) {
     if (c === "'" && i + 2 < expr.length && expr[i + 2] === "'") {
       tokens.push({ kind: "num", val: expr.charCodeAt(i + 1) });
       i += 3;
+      continue;
+    }
+    if (c === "$") {
+      tokens.push({ kind: "id", val: "$" });
+      i++;
+      continue;
+    }
+    if (c === "@") {
+      let j = i + 1;
+      while (j < expr.length && /\w/.test(expr[j]))
+        j++;
+      if (j === i + 1)
+        throw new Error("expected identifier after '@'");
+      tokens.push({ kind: "id", val: expr.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (c === ".") {
+      let j = i + 1;
+      while (j < expr.length && /\w/.test(expr[j]))
+        j++;
+      if (j === i + 1)
+        throw new Error("expected identifier after '.'");
+      tokens.push({ kind: "id", val: expr.slice(i, j) });
+      i = j;
       continue;
     }
     if (/[0-9]/.test(c)) {
@@ -1933,7 +2090,7 @@ function tokenizeExpr(expr) {
   }
   return tokens;
 }
-function evalExpr(expr, symbols) {
+function evalExpr(expr, symbols, pc = 0, lastLabel = "") {
   const tokens = tokenizeExpr(expr);
   let pos = 0;
   function peek() {
@@ -1956,20 +2113,30 @@ function evalExpr(expr, symbols) {
     }
     if (t.kind === "id") {
       next();
-      const k = t.val.toUpperCase();
-      if (k === "LOW" || k === "HIGH") {
+      const raw = t.val;
+      if (raw === "$")
+        return pc;
+      const upper = raw.toUpperCase();
+      if (upper === "LOW" || upper === "HIGH") {
         if (!isOp("("))
-          throw new Error(`${k} requires parentheses`);
+          throw new Error(`${upper} requires parentheses`);
         next();
         const v = parseOr();
         if (!isOp(")"))
           throw new Error("expected ')'");
         next();
-        return k === "LOW" ? v & 255 : v >> 8 & 255;
+        return upper === "LOW" ? v & 255 : v >> 8 & 255;
       }
+      let name = raw;
+      if (name.startsWith("@") || name.startsWith(".")) {
+        if (!lastLabel)
+          throw new Error(`local label without scope: ${raw}`);
+        name = lastLabel + name;
+      }
+      const k = name.toUpperCase();
       if (symbols.has(k))
         return symbols.get(k);
-      throw new Error(`unknown symbol: ${t.val}`);
+      throw new Error(`unknown symbol: ${raw}`);
     }
     if (t.kind === "op" && t.val === "(") {
       next();
@@ -2057,15 +2224,15 @@ function evalExpr(expr, symbols) {
     throw new Error(`unexpected token: ${tokens[pos].val}`);
   return result;
 }
-function encode(m, ops, symbols) {
+function encode(m, ops, symbols, pc = 0, lastLabel = "") {
   if (m in IMPLIED)
     return [IMPLIED[m]];
   if (m in ALU_REG)
     return [ALU_REG[m] | REG8[ops[0].toUpperCase()]];
   if (m in ALU_IMM)
-    return [ALU_IMM[m], evalExpr(ops[0], symbols) & 255];
+    return [ALU_IMM[m], evalExpr(ops[0], symbols, pc, lastLabel) & 255];
   if (m in ADDR16) {
-    const v = evalExpr(ops[0], symbols);
+    const v = evalExpr(ops[0], symbols, pc, lastLabel);
     return [ADDR16[m], v & 255, v >> 8 & 255];
   }
   if (m === "MOV")
@@ -2073,7 +2240,7 @@ function encode(m, ops, symbols) {
       64 | REG8[ops[0].toUpperCase()] << 3 | REG8[ops[1].toUpperCase()]
     ];
   if (m === "MVI") {
-    const v = evalExpr(ops[1], symbols);
+    const v = evalExpr(ops[1], symbols, pc, lastLabel);
     return [6 | REG8[ops[0].toUpperCase()] << 3, v & 255];
   }
   if (m === "INR")
@@ -2081,7 +2248,7 @@ function encode(m, ops, symbols) {
   if (m === "DCR")
     return [5 | REG8[ops[0].toUpperCase()] << 3];
   if (m === "LXI") {
-    const v = evalExpr(ops[1], symbols);
+    const v = evalExpr(ops[1], symbols, pc, lastLabel);
     return [
       1 | REG_PAIR[ops[0].toUpperCase()] << 4,
       v & 255,
@@ -2103,31 +2270,31 @@ function encode(m, ops, symbols) {
   if (m === "STAX")
     return [2 | REG_PAIR[ops[0].toUpperCase()] << 4];
   if (m === "IN")
-    return [219, evalExpr(ops[0], symbols) & 255];
+    return [219, evalExpr(ops[0], symbols, pc, lastLabel) & 255];
   if (m === "OUT")
-    return [211, evalExpr(ops[0], symbols) & 255];
+    return [211, evalExpr(ops[0], symbols, pc, lastLabel) & 255];
   if (m === "RST") {
-    const n = evalExpr(ops[0], symbols);
+    const n = evalExpr(ops[0], symbols, pc, lastLabel);
     return [199 | n << 3];
   }
   throw new Error(`cannot encode: ${m} ${ops.join(", ")}`);
 }
-function dbBytes(operands, symbols) {
+function dbBytes(operands, symbols, pc = 0, lastLabel = "") {
   const out = [];
   for (const op of operands) {
     if (op.startsWith('"') && op.endsWith('"') || op.startsWith("'") && op.endsWith("'")) {
       for (const ch of op.slice(1, -1))
         out.push(ch.charCodeAt(0));
     } else {
-      out.push(evalExpr(op, symbols) & 255);
+      out.push(evalExpr(op, symbols, pc, lastLabel) & 255);
     }
   }
   return out;
 }
-function dwBytes(operands, symbols) {
+function dwBytes(operands, symbols, pc = 0, lastLabel = "") {
   const out = [];
   for (const op of operands) {
-    const v = evalExpr(op, symbols) & 65535;
+    const v = evalExpr(op, symbols, pc, lastLabel) & 65535;
     out.push(v & 255, v >> 8 & 255);
   }
   return out;
@@ -2140,15 +2307,15 @@ function parseDs(operands) {
     return { count: m[1], fill: m[2] };
   return { count: operands[0], fill: "0" };
 }
-function dsBytes(operands, symbols) {
+function dsBytes(operands, symbols, pc = 0, lastLabel = "") {
   const { count, fill } = parseDs(operands);
-  const n = evalExpr(count, symbols);
-  const f = evalExpr(fill, symbols) & 255;
+  const n = evalExpr(count, symbols, pc, lastLabel);
+  const f = evalExpr(fill, symbols, pc, lastLabel) & 255;
   return new Array(n).fill(f);
 }
-function countDs(operands, symbols) {
+function countDs(operands, symbols, pc = 0, lastLabel = "") {
   const { count } = parseDs(operands);
-  return evalExpr(count, symbols);
+  return evalExpr(count, symbols, pc, lastLabel);
 }
 function countDb(operands) {
   let n = 0;
@@ -2161,22 +2328,30 @@ function countDb(operands) {
   return n;
 }
 function asm(source) {
-  const lines = source.split(`
-`);
+  const pp = preprocess(source);
   const symbols = new Map;
   let pc = 0;
+  let lastLabel = "";
   let ended = false;
-  for (let idx = 0;idx < lines.length && !ended; idx++) {
-    const line = lines[idx];
+  for (let idx = 0;idx < pp.length && !ended; idx++) {
+    const { text: line, orig } = pp[idx];
     try {
       for (const stmt of splitStatements(line)) {
         const parts = parseLine(stmt);
         if (parts.label) {
+          let labelName = parts.label;
+          if (labelName.startsWith("@") || labelName.startsWith(".")) {
+            if (!lastLabel)
+              throw new Error(`local label without preceding normal label: ${labelName}`);
+            labelName = lastLabel + labelName;
+          } else if (!parts.isEqu) {
+            lastLabel = parts.label;
+          }
           if (parts.isEqu) {
-            symbols.set(parts.label.toUpperCase(), evalExpr(parts.operands[0], symbols));
+            symbols.set(labelName.toUpperCase(), evalExpr(parts.operands[0], symbols, pc, lastLabel));
             continue;
           }
-          symbols.set(parts.label.toUpperCase(), pc);
+          symbols.set(labelName.toUpperCase(), pc);
         }
         if (!parts.mnemonic)
           continue;
@@ -2184,7 +2359,7 @@ function asm(source) {
         if (m === "EQU")
           continue;
         if (m === "ORG") {
-          pc = evalExpr(parts.operands[0], symbols);
+          pc = evalExpr(parts.operands[0], symbols, pc, lastLabel);
           continue;
         }
         if (m === "SECTION")
@@ -2202,7 +2377,7 @@ function asm(source) {
           continue;
         }
         if (m === "DS") {
-          pc += countDs(parts.operands, symbols);
+          pc += countDs(parts.operands, symbols, pc, lastLabel);
           continue;
         }
         pc += instrSize(m);
@@ -2210,29 +2385,34 @@ function asm(source) {
     } catch (e) {
       if (e instanceof AsmError)
         throw e;
-      throw new AsmError(e.message, idx + 1, line, firstNonSpaceCol(line));
+      throw new AsmError(e.message, orig, line, firstNonSpaceCol(line));
     }
   }
   const sections = [];
   let current = null;
   const sectionNames = new Set;
+  let lastLabel2 = "";
   let endedPass2 = false;
-  for (let idx = 0;idx < lines.length && !endedPass2; idx++) {
-    const line = lines[idx];
+  for (let idx = 0;idx < pp.length && !endedPass2; idx++) {
+    const { text: line, orig } = pp[idx];
     try {
       for (const stmt of splitStatements(line)) {
         const parts = parseLine(stmt);
+        if (parts.label && !parts.label.startsWith("@") && !parts.label.startsWith(".") && !parts.isEqu) {
+          lastLabel2 = parts.label;
+        }
         if (parts.isEqu || !parts.mnemonic)
           continue;
         const m = parts.mnemonic.toUpperCase();
         if (m === "EQU")
           continue;
+        const curPc = current ? current.start + current.data.length : 0;
         if (m === "ORG") {
           if (current && current.data.length) {
             current.end = current.start + current.data.length - 1;
             sections.push(current);
           }
-          const addr = evalExpr(parts.operands[0], symbols);
+          const addr = evalExpr(parts.operands[0], symbols, curPc, lastLabel2);
           current = { start: addr, end: addr, data: [] };
           continue;
         }
@@ -2254,13 +2434,13 @@ function asm(source) {
         }
         if (!current)
           throw new Error("code before ORG");
-        const bytes = m === "DB" ? dbBytes(parts.operands, symbols) : m === "DW" ? dwBytes(parts.operands, symbols) : m === "DS" ? dsBytes(parts.operands, symbols) : encode(m, parts.operands, symbols);
+        const bytes = m === "DB" ? dbBytes(parts.operands, symbols, curPc, lastLabel2) : m === "DW" ? dwBytes(parts.operands, symbols, curPc, lastLabel2) : m === "DS" ? dsBytes(parts.operands, symbols, curPc, lastLabel2) : encode(m, parts.operands, symbols, curPc, lastLabel2);
         current.data.push(...bytes);
       }
     } catch (e) {
       if (e instanceof AsmError)
         throw e;
-      throw new AsmError(e.message, idx + 1, line, firstNonSpaceCol(line));
+      throw new AsmError(e.message, orig, line, firstNonSpaceCol(line));
     }
   }
   if (current && current.data.length) {
@@ -2277,7 +2457,7 @@ import { readFile, writeFile } from "fs/promises";
 // packages/rk86/package.json
 var package_default = {
   name: "rk86",
-  version: "2.0.18",
+  version: "2.0.19",
   description: "\u042D\u043C\u0443\u043B\u044F\u0442\u043E\u0440 \u0420\u0430\u0434\u0438\u043E-86\u0420\u041A (Intel 8080) \u0434\u043B\u044F \u0442\u0435\u0440\u043C\u0438\u043D\u0430\u043B\u0430",
   bin: {
     rk86: "rk86.js"
@@ -4180,7 +4360,6 @@ class TerminalUI {
   terminal = { put: () => {}, history: [] };
   i8080disasm;
   visualizer;
-  toggle_assembler;
   on_visualizer_hit;
   on_pause_changed;
   refreshDebugger;
